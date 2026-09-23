@@ -1,6 +1,4 @@
 # Production-like stack: `docker compose up -d --build`, then open http://localhost:8080.
-name: strix-panel
-
 x-app-env: &app-env
   DATABASE_URL: postgres://${POSTGRES_USER:-strix}:${POSTGRES_PASSWORD:-strix}@postgres:5432/${POSTGRES_DB:-strix_panel}
 

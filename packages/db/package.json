@@ -10,7 +10,7 @@
   },
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate": "bun src/migrate.ts",
+    "migrate": "bun --env-file=../../.env src/migrate.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "bun test"
   },

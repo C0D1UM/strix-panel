@@ -1,6 +1,4 @@
 # Local development infra only. Apps run on the host with `bun run dev`.
-name: strix-panel-dev
-
 services:
   postgres:
     image: postgres:18-alpine
