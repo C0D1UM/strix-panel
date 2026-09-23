@@ -6,6 +6,7 @@ const worker = createScanWorker(env.DATABASE_URL, processScan, {
   concurrency: env.WORKER_CONCURRENCY,
 })
 worker.on('failed', (job, error) => console.error(`[worker] job ${job?.id} failed:`, error))
+worker.on('error', (error) => console.error(`[worker] error: ${error.message}`))
 await worker.waitUntilReady()
 console.log('[worker] ready')
 

@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "bun run --filter '@strix-panel/api' --filter '@strix-panel/web' --filter '@strix-panel/worker' dev",
-    "dev:infra": "docker compose -f compose.dev.yaml up -d",
+    "dev:infra": "docker compose -f compose.dev.yaml up -d --wait",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
