@@ -1,11 +1,13 @@
 import { Client } from 'pg'
 import { migrateAll } from './migrate-all'
 
-export const DEFAULT_TEST_DATABASE_URL = 'postgres://strix:strix@localhost:5432/strix_panel_test'
-
 // Each package gets its own database (e.g. strix_panel_test_api) because package test suites run in parallel.
+// Defaults to the dev Postgres on DB_PORT; TEST_DATABASE_URL overrides the base URL.
 export function testDatabaseUrl(suite: string) {
-  const url = new URL(process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_DATABASE_URL)
+  const base =
+    process.env.TEST_DATABASE_URL ??
+    `postgres://strix:strix@localhost:${process.env.DB_PORT || 5432}/strix_panel_test`
+  const url = new URL(base)
   url.pathname = `${url.pathname}_${suite}`
   return url.toString()
 }

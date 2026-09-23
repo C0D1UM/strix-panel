@@ -34,7 +34,7 @@ Job flow: `api` enqueues on the `scans` queue → `worker` runs `strix -n` → p
 
 ```sh
 bun install
-bun run dev:infra      # Postgres (compose.dev.yaml)
+bun run dev:infra      # Postgres (compose.dev.yaml) on DB_PORT (default 5432)
 bun run db:migrate     # app (Drizzle) + queue (BullMQ) migrations
 bun run db:seed        # local admin from SEED_ADMIN_* (email + password; refuses in production)
 bun run dev            # api :3000, web :5173, worker (health :3001)
@@ -43,7 +43,9 @@ bun run db:generate    # after editing packages/db/src/schema/*
 docker compose up -d --build   # prod-like stack on :8080
 ```
 
-Tests need Postgres. They always use separate databases (`strix_panel_test_<package>`, created and migrated automatically by each test preload); if Postgres is not on `localhost:5432`, set `TEST_DATABASE_URL` to the base URL (the package suffix is appended).
+Worktrees: each worktree gets its own dev Postgres (the Compose project is named after the folder). Give each a distinct `DB_PORT`, `API_PORT`, `WEB_PORT` and `WORKER_HEALTH_PORT` (via env or `.env`); `DATABASE_URL` and `BETTER_AUTH_URL` follow them automatically.
+
+Tests need Postgres. They always use separate databases (`strix_panel_test_<package>`, created and migrated automatically by each test preload); they follow `DB_PORT`, or set `TEST_DATABASE_URL` to a base URL (the package suffix is appended).
 
 ## Conventions
 
@@ -58,7 +60,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 - Every route declares `response` (and `body`/`query`/`params` when present) schemas and `detail: { tags, summary }`. Swagger is generated from them, so a route without schemas is undocumented.
 - Errors: throw `AppError` subclasses from `src/lib/errors.ts`. Every error response is `{ error: { code, message } }` with an UPPER_SNAKE `code`. Never return ad-hoc error objects.
 - Auth: use the macros from `src/plugins/auth.ts` — `{ requireAuth: true }` or `{ requireRole: 'admin' }` — which put `user` and `session` on the context. Never read cookies or call `auth.api.getSession` in a route yourself.
-- Env: add variables to the TypeBox schema in `src/lib/env.ts` (and `.env.example`). Never read `process.env` elsewhere.
+- Env: add variables to the TypeBox schema in `src/lib/env.ts` (and, commented out, to `.env.example`). Never read `process.env` elsewhere. Development must keep working with no `.env`: give every new variable a default, or a development default in `DEVELOPMENT_DEFAULTS` when production must set it explicitly.
 
 ### Database (`packages/db`)
 
@@ -69,7 +71,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 
 ### Auth
 
-- Better Auth, configured in `apps/api/src/lib/auth.ts`. The code defaults are Google on and email+password off. `.env.example` flips both for local dev.
+- Better Auth, configured in `apps/api/src/lib/auth.ts`. Defaults: in development, email+password on and Google off; in production, Google on and email+password off. `BETTER_AUTH_URL` defaults to `http://localhost:<WEB_PORT>` in development and is required in production.
 - `ALLOWED_EMAIL_DOMAINS` is enforced at sign-up and on every new session.
 - The first user becomes admin (`promoteIfFirstAdmin`, serialized by an advisory lock).
 - Roles: `admin`, `user` (`packages/shared`).

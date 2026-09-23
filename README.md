@@ -10,9 +10,9 @@ Requirements: Docker with Compose.
 
 ```sh
 cp .env.example .env
-# Set BETTER_AUTH_SECRET (openssl rand -base64 32), BETTER_AUTH_URL=http://localhost:8080
-# and ALLOWED_EMAIL_DOMAINS. For Google sign-in: AUTH_GOOGLE_ENABLED=true,
-# GOOGLE_CLIENT_ID/SECRET and AUTH_EMAIL_PASSWORD_ENABLED=false.
+# Uncomment and set BETTER_AUTH_SECRET (openssl rand -base64 32), GOOGLE_CLIENT_ID/SECRET
+# and ALLOWED_EMAIL_DOMAINS. The Docker stack uses Google sign-in by default; for password
+# login instead, set AUTH_GOOGLE_ENABLED=false and AUTH_EMAIL_PASSWORD_ENABLED=true.
 docker compose up -d --build
 ```
 
@@ -29,15 +29,16 @@ To serve on a real domain with automatic HTTPS, set `SITE_ADDRESS=panel.example.
 Requirements: [Bun](https://bun.sh) 1.3+ and Docker.
 
 ```sh
-cp .env.example .env         # fill in BETTER_AUTH_SECRET (email + password login is on, Google off)
-bun install
+bun install                  # no .env needed: dev defaults use password login, Google off
 bun run dev:infra            # Postgres in Docker
 bun run db:migrate
-bun run db:seed              # admin@example.com / P@ssw0rd (SEED_ADMIN_* in .env)
+bun run db:seed              # admin@example.com / P@ssw0rd
 bun run dev                  # API :3000, web :5173, worker
 ```
 
 Open http://localhost:5173. API docs: http://localhost:5173/api/docs.
+
+To change anything (ports, database, Google sign-in), copy `.env.example` to `.env` and uncomment what you need. `DATABASE_URL` follows `DB_PORT` and `BETTER_AUTH_URL` follows `WEB_PORT`, so running several worktrees side by side only needs distinct ports (`DB_PORT`, `API_PORT`, `WEB_PORT`, `WORKER_HEALTH_PORT`).
 
 | Command               | What it does                                                   |
 | --------------------- | -------------------------------------------------------------- |

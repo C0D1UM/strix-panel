@@ -22,6 +22,11 @@ describe('parseEnv', () => {
     expect(parseEnv(schema, { URL: 'x', PORT: '' }).PORT).toBe(3000)
   })
 
+  test('fills missing or empty variables from defaults', () => {
+    expect(parseEnv(schema, { URL: '' }, { URL: 'fallback' }).URL).toBe('fallback')
+    expect(parseEnv(schema, { URL: 'set' }, { URL: 'fallback' }).URL).toBe('set')
+  })
+
   test('throws listing invalid variables', () => {
     expect(() => parseEnv(schema, {})).toThrow(/URL/)
   })
