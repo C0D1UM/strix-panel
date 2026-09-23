@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "bun --env-file=../../.env --watch src/index.ts",
     "start": "bun src/index.ts",
+    "seed": "bun --env-file=../../.env src/seed.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "bun test"
   },

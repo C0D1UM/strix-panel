@@ -36,6 +36,7 @@ Job flow: `api` enqueues on the `scans` queue → `worker` runs `strix -n` → p
 bun install
 bun run dev:infra      # Postgres (compose.dev.yaml)
 bun run db:migrate     # app (Drizzle) + queue (BullMQ) migrations
+bun run db:seed        # local admin from SEED_ADMIN_* (email + password; refuses in production)
 bun run dev            # api :3000, web :5173, worker (health :3001)
 bun run check          # format:check + lint + typecheck + test — run before calling work done
 bun run db:generate    # after editing packages/db/src/schema/*
@@ -68,7 +69,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 
 ### Auth
 
-- Better Auth, configured in `apps/api/src/lib/auth.ts`. Google is on by default; email+password is off unless `AUTH_EMAIL_PASSWORD_ENABLED=true`.
+- Better Auth, configured in `apps/api/src/lib/auth.ts`. The code defaults are Google on and email+password off. `.env.example` flips both for local dev.
 - `ALLOWED_EMAIL_DOMAINS` is enforced at sign-up and on every new session.
 - The first user becomes admin (`promoteIfFirstAdmin`, serialized by an advisory lock).
 - Roles: `admin`, `user` (`packages/shared`).

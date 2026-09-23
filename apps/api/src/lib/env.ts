@@ -19,6 +19,10 @@ const schema = Type.Object({
   AUTH_EMAIL_PASSWORD_ENABLED: Type.Boolean({ default: false }),
   // Comma-separated. Empty means any email may sign in.
   ALLOWED_EMAIL_DOMAINS: Type.String({ default: '' }),
+  // Local-only admin created by `bun run db:seed`.
+  SEED_ADMIN_EMAIL: Type.String({ default: 'admin@example.com' }),
+  SEED_ADMIN_PASSWORD: Type.String({ minLength: 8, default: 'P@ssw0rd' }),
+  SEED_ADMIN_NAME: Type.String({ default: 'Admin' }),
 })
 
 function loadEnv() {
