@@ -1,0 +1,68 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@plugin '@iconify/tailwind4';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Semantic color tokens. Components use these (bg-surface, text-fg, border-line, bg-accent...),
+ * never raw palette colors, so light/dark is handled here only.
+ */
+:root {
+  --surface: #f3f5f9;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e8ecf3;
+  --fg: #1b1f3b;
+  --fg-muted: #5b6282;
+  --line: #d8dde8;
+  --accent: #0e7c86;
+  --accent-hover: #0b666e;
+  --accent-fg: #ffffff;
+  --danger: #b42318;
+  --danger-surface: #fdecea;
+}
+
+.dark {
+  --surface: #12141f;
+  --surface-raised: #1a1d2b;
+  --surface-sunken: #0d0f18;
+  --fg: #e6e8f0;
+  --fg-muted: #9097ad;
+  --line: #2a2e40;
+  --accent: #3cc2c9;
+  --accent-hover: #62d3d8;
+  --accent-fg: #0d1a1c;
+  --danger: #f97066;
+  --danger-surface: #3a1a1a;
+}
+
+@theme inline {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-danger-surface: var(--danger-surface);
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-fg font-sans antialiased;
+  }
+
+  /* Tailwind v4 preflight resets buttons to the default cursor. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "strix-panel",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.8",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter '@strix-panel/api' --filter '@strix-panel/web' --filter '@strix-panel/worker' dev",
+    "dev:infra": "docker compose -f compose.dev.yaml up -d",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test",
+    "db:generate": "bun run --filter '@strix-panel/db' generate",
+    "db:migrate": "bun run --filter '@strix-panel/db' migrate"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.11.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-vue": "10.11.0",
+    "globals": "17.12.0",
+    "prettier": "3.9.9",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1"
+  }
+}

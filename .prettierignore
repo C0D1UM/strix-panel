@@ -1,0 +1,3 @@
+bun.lock
+packages/db/migrations/
+LICENSE

@@ -1,0 +1,96 @@
+# Production-like stack: `docker compose up -d --build`, then open http://localhost:8080.
+name: strix-panel
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://${POSTGRES_USER:-strix}:${POSTGRES_PASSWORD:-strix}@postgres:5432/${POSTGRES_DB:-strix_panel}
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-strix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-strix}
+      POSTGRES_DB: ${POSTGRES_DB:-strix_panel}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Applies app + queue migrations, then exits.
+  migrate:
+    build: { context: ., dockerfile: docker/api.Dockerfile }
+    image: strix-panel-api
+    command: ['bun', 'packages/db/src/migrate.ts']
+    environment: *app-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    image: strix-panel-api
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
+      AUTH_GOOGLE_ENABLED: ${AUTH_GOOGLE_ENABLED:-true}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      AUTH_EMAIL_PASSWORD_ENABLED: ${AUTH_EMAIL_PASSWORD_ENABLED:-false}
+      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'bun',
+          '-e',
+          "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    build: { context: ., dockerfile: docker/worker.Dockerfile }
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      STRIX_LLM: ${STRIX_LLM:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    volumes:
+      # WARNING: access to the Docker socket is root-equivalent on the host. Strix needs it to start
+      # its sandbox containers. Only the worker gets it — never mount it into api or web.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - strix-runs:/app/strix_runs
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'bun',
+          '-e',
+          "fetch('http://localhost:3001').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  web:
+    build: { context: ., dockerfile: docker/web.Dockerfile }
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - '${PANEL_PORT:-8080}:80'
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  postgres-data:
+  strix-runs:

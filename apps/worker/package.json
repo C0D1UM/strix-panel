@@ -1,0 +1,19 @@
+{
+  "name": "@strix-panel/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "0.34.52",
+    "@strix-panel/db": "workspace:*",
+    "@strix-panel/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2"
+  }
+}
