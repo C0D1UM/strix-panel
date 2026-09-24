@@ -2,6 +2,7 @@ import { openapi } from '@elysiajs/openapi'
 import { Elysia } from 'elysia'
 import { auth, authOpenApi } from './lib/auth'
 import { configModule } from './modules/config'
+import { dashboardModule } from './modules/dashboard'
 import { healthModule } from './modules/health'
 import { meModule } from './modules/me'
 import { scansModule } from './modules/scans'
@@ -20,6 +21,7 @@ export const app = new Elysia({ prefix: '/api' })
           { name: 'System', description: 'Health and configuration' },
           { name: 'Users', description: 'Users and roles' },
           { name: 'Scans', description: 'Strix scans and their live progress' },
+          { name: 'Dashboard', description: 'Usage metrics' },
           { name: 'Auth', description: 'Better Auth endpoints' },
         ],
         components: authDocs.components as never,
@@ -33,6 +35,6 @@ export const app = new Elysia({ prefix: '/api' })
     detail: { hide: true },
   })
   .use(healthModule)
-  .group('/v1', (v1) => v1.use(configModule).use(meModule).use(scansModule))
+  .group('/v1', (v1) => v1.use(configModule).use(meModule).use(scansModule).use(dashboardModule))
 
 export type App = typeof app
