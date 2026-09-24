@@ -1,10 +1,9 @@
 import { schema } from '@strix-panel/db'
 import { notifyScanUpdate } from '@strix-panel/db/notify'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import { db } from '../src/lib/db'
 import { scanQueue } from '../src/lib/queue'
-import { scanListener } from '../src/lib/scan-listener'
 import { request, signUp } from './helpers'
 
 let admin: string
@@ -17,11 +16,6 @@ beforeEach(async () => {
   admin = (await signUp('admin@example.com')).cookie
   alice = (await signUp('alice@example.com')).cookie
   bob = (await signUp('bob@example.com')).cookie
-})
-
-afterAll(async () => {
-  await scanListener.close()
-  await scanQueue.close()
 })
 
 const body = (over: Record<string, unknown> = {}) =>

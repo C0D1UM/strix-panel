@@ -1,10 +1,8 @@
 import { schema } from '@strix-panel/db'
 import type { ScanStatus } from '@strix-panel/shared'
 import { eq } from 'drizzle-orm'
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import { db } from '../src/lib/db'
-import { scanQueue } from '../src/lib/queue'
-import { scanListener } from '../src/lib/scan-listener'
 import { request, signUp } from './helpers'
 
 let admin: string
@@ -27,11 +25,6 @@ beforeEach(async () => {
   await signUp('bob@example.com')
   aliceId = await userId('alice@example.com')
   bobId = await userId('bob@example.com')
-})
-
-afterAll(async () => {
-  await scanListener.close()
-  await scanQueue.close()
 })
 
 interface ScanSeed {
