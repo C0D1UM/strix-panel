@@ -4,12 +4,12 @@ Guidance for AI coding agents (and humans) working in this repo. Keep it current
 
 ## What this is
 
-Strix Panel is a self-hosted web panel that wraps the [Strix](https://github.com/usestrix/strix) CLI (an AI pentest agent, Python). Strix has no server of its own: a scan is `strix -n -t <target>`, it starts Docker sandbox containers, and it writes everything to `strix_runs/<run_name>/` on disk (`run.json` with status and `llm_usage` token/cost totals, `vulnerabilities.json`, `penetration_test_report.md`, `findings.sarif`, `.state/agents.json`). The panel launches those runs remotely, tracks them, and adds users, projects, usage caps and an admin view.
+Strix Panel is a self-hosted web panel that wraps the [Strix](https://github.com/usestrix/strix) CLI (an AI pentest agent, Python). Strix has no server of its own: a scan is `strix -n -t <target>`, it starts Docker sandbox containers, and it writes everything to `strix_runs/<run_name>/` on disk (`run.json` with status and `llm_usage` token/cost totals, `vulnerabilities.json`, `penetration_test_report.md`, `findings.sarif`, `.state/agents.json`). The panel launches those runs from the browser, tracks them live, stores findings and usage, and adds users, roles and an admin view.
 
 Strix facts that shape the design:
 
 - Needs Docker: whatever runs `strix` needs the Docker socket.
-- The LLM is configured by env: `STRIX_LLM` (required), `LLM_API_KEY`. Budget cap: `--max-budget-usd`.
+- The LLM is configured by env: `STRIX_LLM` (required), `LLM_API_KEY`. Budget cap: `--max-budget`.
 - No flag to choose the run name; no event-log file. Live progress comes from polling the run directory.
 - Pinned version: `strix-agent==1.6.2` (`docker/worker.Dockerfile`, `STRIX_VERSION`). Upgrade deliberately — the output file formats are not a public API.
 
@@ -24,7 +24,7 @@ Bun workspaces monorepo. Bun is the runtime, package manager and test runner (we
 | `apps/worker`     | BullMQ consumer. The only process that runs `strix` and touches Docker.                                                         |
 | `packages/db`     | Drizzle schema, migrations, DB client, the queue module (`@strix-panel/db/queue`) and LISTEN/NOTIFY (`@strix-panel/db/notify`). |
 | `packages/shared` | Framework-free code used by several apps: roles, themes, env parsing, small pure helpers.                                       |
-| `docker/`         | Dockerfiles and the Caddyfile.                                                                                                  |
+| `docker/`         | Dockerfiles and the Caddyfile. Released as `ghcr.io/c0d1um/strix-panel-{api,web,worker}`.                                       |
 
 Request flow: browser → Caddy (`web` container) → `/api/*` reverse-proxied to `api`, everything else served from the SPA build. Same origin everywhere (Vite proxies `/api` in dev), so auth is a plain httpOnly session cookie — no CORS, no tokens in JS.
 
@@ -42,7 +42,7 @@ bun run db:seed        # local admin from SEED_ADMIN_* (email + password) plus o
 bun run dev            # api :3000, web :5173, worker (health :3001)
 bun run check          # format:check + lint + typecheck + test — run before calling work done
 bun run db:generate    # after editing packages/db/src/schema/*
-docker compose up -d --build   # prod-like stack on :8080
+docker compose up -d --build   # prod-like stack on :8080, built from source (images are tagged like the GHCR ones)
 ```
 
 Worktrees: each worktree gets its own dev Postgres (the Compose project is named after the folder). Give each a distinct `DB_PORT`, `API_PORT`, `WEB_PORT` and `WORKER_HEALTH_PORT` (via env or `.env`); `DATABASE_URL` and `BETTER_AUTH_URL` follow them automatically.
@@ -74,14 +74,14 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 
 ### Auth
 
-- Better Auth, configured in `apps/api/src/lib/auth.ts`. Defaults: in development, email+password on and Google off; in production, Google on and email+password off. `BETTER_AUTH_URL` defaults to `http://localhost:<WEB_PORT>` in development and is required in production.
+- Better Auth, configured in `apps/api/src/lib/auth.ts`. Defaults: in development, email+password on and Google off; in production, Google on and email+password off. `compose.yaml` overrides that to email+password on and Google off, so a fresh deployment works without an OAuth client. `BETTER_AUTH_URL` defaults to `http://localhost:<WEB_PORT>` in development and is required in production.
 - `ALLOWED_EMAIL_DOMAINS` is enforced at sign-up and on every new session.
 - The first user becomes admin (`promoteIfFirstAdmin`, serialized by an advisory lock).
 - Roles: `admin`, `user` (`packages/shared`).
 
 ### Web (`apps/web`)
 
-- Vue 3 `<script setup lang="ts">`, Composition API. No state library and no data-fetching library yet: plain `api.*` calls inside components or composables. TanStack Query is the planned choice once pages need caching or polling.
+- Vue 3 `<script setup lang="ts">`, Composition API. No state library and no data-fetching library: plain `api.*` calls inside components or composables.
 - Colors: only the semantic tokens in `src/styles/main.css` (`bg-surface`, `bg-surface-raised`, `bg-surface-sunken`, `text-fg`, `text-fg-muted`, `border-line`, `bg-accent`, `text-danger`, …). Never raw Tailwind palette colors or hex values in components, and no `dark:` variants: light and dark are handled by the tokens. Need a new color? Add a token for both themes.
 - App shell: signed-in pages are children of the `/` route in `src/router.ts`, rendered inside `src/layouts/AppLayout.vue` (sidebar on desktop, collapsible to icons and remembered; drawer on mobile). To add a page, add a child route and an entry in `items` in `src/components/AppSidebar.vue` (`adminOnly: true` hides it from regular users). The sidebar lists only pages that exist, with no placeholders.
 - The signed-in user's profile is `currentUser` from `src/lib/current-user.ts`. It is loaded once by the layout, so pages don't refetch `/me`.
@@ -111,11 +111,17 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 
 Commit messages are one short imperative sentence, capitalized, with no prefix or body. For example: `Add scan queue module`.
 
+## Releases
+
+- The git tag is the version (`vX.Y.Z`, or `vX.Y.Z-rc.N` for a prerelease). There is no version field to bump in `package.json`.
+- Pushing a tag runs `.github/workflows/release.yml`: the CI checks (`ci.yml` via `workflow_call`), then the three images pushed to GHCR (`X.Y.Z`, `X.Y` and `latest`; prereleases get only `X.Y.Z`), then a GitHub Release with the commit list since the previous tag plus GitHub's generated notes.
+- `compose.yaml` references those images through `STRIX_PANEL_VERSION` (default `latest`) and keeps its `build:` sections, so the same file serves `docker compose pull` deployments and `--build` from source. Adding a service image means adding it to the release matrix too.
+- Images are built for `linux/amd64` only.
+
 ## Glossary
 
 - **Run / scan**: one execution of the Strix CLI against one or more targets. Maps to one `strix_runs/<run_name>/` directory.
-- **Target**: what Strix tests: a URL, repo, local path, domain or IP.
-- **Project**: a group of targets and runs with its own members (planned).
+- **Target**: what Strix tests. Strix accepts URLs, repos, local paths, domains and IPs; the panel only accepts `http(s)` URLs.
 - **Finding**: one vulnerability Strix reported (`vulnerabilities.json`), stored per scan in `scan_finding`.
-- **Usage cap**: a per-user LLM spend limit, enforced by the panel from `run.json` `llm_usage.cost` and Strix's `--max-budget-usd` (planned).
-- **Admin**: a user with role `admin`. Sees and manages all projects and users.
+- **Budget cap**: an optional per-scan USD limit (`maxBudgetUsd`), passed to Strix as `--max-budget`.
+- **Admin**: a user with role `admin`. Sees every user's scans and usage (dashboard scope `all`).

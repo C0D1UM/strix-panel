@@ -1,4 +1,5 @@
-# Production-like stack: `docker compose up -d --build`, then open http://localhost:8080.
+# Production stack. From source: `docker compose up -d --build`. From released images:
+# `docker compose pull && docker compose up -d` (pin STRIX_PANEL_VERSION in .env). Then open http://localhost:8080.
 x-app-env: &app-env
   DATABASE_URL: postgres://${POSTGRES_USER:-strix}:${POSTGRES_PASSWORD:-strix}@postgres:5432/${POSTGRES_DB:-strix_panel}
 
@@ -23,23 +24,23 @@ services:
   # Applies app + queue migrations, then exits.
   migrate:
     build: { context: ., dockerfile: docker/api.Dockerfile }
-    image: strix-panel-api
+    image: ghcr.io/c0d1um/strix-panel-api:${STRIX_PANEL_VERSION:-latest}
     command: ['bun', 'packages/db/src/migrate.ts']
     environment: *app-env
     depends_on:
       postgres: { condition: service_healthy }
 
   api:
-    image: strix-panel-api
+    image: ghcr.io/c0d1um/strix-panel-api:${STRIX_PANEL_VERSION:-latest}
     restart: unless-stopped
     environment:
       <<: *app-env
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
-      AUTH_GOOGLE_ENABLED: ${AUTH_GOOGLE_ENABLED:-true}
+      AUTH_GOOGLE_ENABLED: ${AUTH_GOOGLE_ENABLED:-false}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      AUTH_EMAIL_PASSWORD_ENABLED: ${AUTH_EMAIL_PASSWORD_ENABLED:-false}
+      AUTH_EMAIL_PASSWORD_ENABLED: ${AUTH_EMAIL_PASSWORD_ENABLED:-true}
       ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
     healthcheck:
       test:
@@ -57,6 +58,7 @@ services:
 
   worker:
     build: { context: ., dockerfile: docker/worker.Dockerfile }
+    image: ghcr.io/c0d1um/strix-panel-worker:${STRIX_PANEL_VERSION:-latest}
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -83,14 +85,19 @@ services:
 
   web:
     build: { context: ., dockerfile: docker/web.Dockerfile }
+    image: ghcr.io/c0d1um/strix-panel-web:${STRIX_PANEL_VERSION:-latest}
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     ports:
       - '${PANEL_PORT:-8080}:80'
+    volumes:
+      # Caddy's TLS certificates and keys, so a restart doesn't re-issue them.
+      - caddy-data:/data
     depends_on:
       api: { condition: service_healthy }
 
 volumes:
   postgres-data:
   strix-runs:
+  caddy-data:

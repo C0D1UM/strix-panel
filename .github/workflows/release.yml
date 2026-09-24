@@ -1,0 +1,86 @@
+# Push a tag like v0.1.0 (or v0.2.0-rc.1 for a prerelease) to publish Docker images and a GitHub Release.
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+', 'v[0-9]+.[0-9]+.[0-9]+-*']
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [api, web, worker]
+    steps:
+      - uses: actions/checkout@v7
+      # GHCR image names must be lowercase.
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}-${{ matrix.image }}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # 1.2.3 and 1.2 (plus latest) for releases; only the full version for prereleases.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/${{ matrix.image }}.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  release:
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          previous="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${TAG}^" 2>/dev/null || true)"
+
+          {
+            echo "## Docker images"
+            echo
+            echo '```'
+            for name in api web worker; do echo "${image}-${name}:${version}"; done
+            echo '```'
+            echo
+            echo "Deploy with \`STRIX_PANEL_VERSION=${version}\` in \`.env\`, then \`docker compose pull && docker compose up -d\`."
+            echo
+            echo "## Commits"
+            echo
+            git log --no-merges --format='- %s (%h)' "${previous:+${previous}..}${TAG}"
+            echo
+          } > notes.md
+
+          args=(--title "$TAG" --notes-file notes.md --generate-notes --verify-tag)
+          if [ -n "$previous" ]; then args+=(--notes-start-tag "$previous"); fi
+          if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$TAG" "${args[@]}"

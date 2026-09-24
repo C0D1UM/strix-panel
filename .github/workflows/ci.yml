@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Reused by release.yml so a tag is only released after the same checks pass.
+  workflow_call:
 
 jobs:
   check:
