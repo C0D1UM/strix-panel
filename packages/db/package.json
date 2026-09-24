@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
     "./queue": "./src/queue.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./notify": "./src/notify.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate",
@@ -15,6 +16,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@strix-panel/shared": "workspace:*",
     "bullmq": "6.3.8",
     "drizzle-orm": "0.45.3",
     "pg": "8.23.0"

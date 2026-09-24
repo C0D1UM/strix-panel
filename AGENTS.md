@@ -17,18 +17,20 @@ Strix facts that shape the design:
 
 Bun workspaces monorepo. Bun is the runtime, package manager and test runner (web tests use Vitest).
 
-| Path              | Owns                                                                                                       |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| `apps/api`        | Elysia HTTP API under `/api`. Auth, business logic, enqueueing jobs. Swagger at `/api/docs`.               |
-| `apps/web`        | Vue 3 + Vite SPA. Talks to the API only through Eden Treaty (`src/lib/api.ts`) and the Better Auth client. |
-| `apps/worker`     | BullMQ consumer. The only process that runs `strix` and touches Docker.                                    |
-| `packages/db`     | Drizzle schema, migrations, DB client, and the queue module (`@strix-panel/db/queue`).                     |
-| `packages/shared` | Framework-free code used by several apps: roles, themes, env parsing, small pure helpers.                  |
-| `docker/`         | Dockerfiles and the Caddyfile.                                                                             |
+| Path              | Owns                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`        | Elysia HTTP API under `/api`. Auth, business logic, enqueueing jobs. Swagger at `/api/docs`.                                    |
+| `apps/web`        | Vue 3 + Vite SPA. Talks to the API only through Eden Treaty (`src/lib/api.ts`) and the Better Auth client.                      |
+| `apps/worker`     | BullMQ consumer. The only process that runs `strix` and touches Docker.                                                         |
+| `packages/db`     | Drizzle schema, migrations, DB client, the queue module (`@strix-panel/db/queue`) and LISTEN/NOTIFY (`@strix-panel/db/notify`). |
+| `packages/shared` | Framework-free code used by several apps: roles, themes, env parsing, small pure helpers.                                       |
+| `docker/`         | Dockerfiles and the Caddyfile.                                                                                                  |
 
 Request flow: browser → Caddy (`web` container) → `/api/*` reverse-proxied to `api`, everything else served from the SPA build. Same origin everywhere (Vite proxies `/api` in dev), so auth is a plain httpOnly session cookie — no CORS, no tokens in JS.
 
-Job flow: `api` enqueues on the `scans` queue → `worker` runs `strix -n` → polls `strix_runs/` → writes progress to Postgres → `api` streams it to the browser (planned: `LISTEN/NOTIFY` carrying ids + SSE). There is no Redis: BullMQ uses its Postgres backend (schema `bullmq`).
+Job flow: `api` inserts a `scan` row and enqueues `{ scanId }` on the `scans` queue → `worker` runs `strix -n` in `<STRIX_WORK_DIR>/<scanId>/` → every `STRIX_POLL_INTERVAL_MS` it reads `run.json`, `.state/agents.json` and `vulnerabilities.json` and writes usage, agents, findings and feed events to Postgres, then `pg_notify('scan_updates', scanId)` → `api` holds one `LISTEN` connection and pushes changes to browsers over SSE (`GET /api/v1/scans/:id/stream`). There is no Redis: BullMQ uses its Postgres backend (schema `bullmq`).
+
+Scan lifecycle: `queued` → `running` → `completed` | `failed` | `stopped`, with `stopping` after a stop request (the worker sees it on its next poll and sends SIGINT, then SIGTERM after 30 s and SIGKILL after 60 s). A worker restart mid-scan marks the scan `failed` (no resume). Status values live in `packages/shared`.
 
 ## Commands
 
@@ -36,7 +38,7 @@ Job flow: `api` enqueues on the `scans` queue → `worker` runs `strix -n` → p
 bun install
 bun run dev:infra      # Postgres (compose.dev.yaml) on DB_PORT (default 5432)
 bun run db:migrate     # app (Drizzle) + queue (BullMQ) migrations
-bun run db:seed        # local admin from SEED_ADMIN_* (email + password; refuses in production)
+bun run db:seed        # local admin from SEED_ADMIN_* (email + password) plus one sample completed scan; refuses in production
 bun run dev            # api :3000, web :5173, worker (health :3001)
 bun run check          # format:check + lint + typecheck + test — run before calling work done
 bun run db:generate    # after editing packages/db/src/schema/*
@@ -68,6 +70,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 - Change the schema, then `bun run db:generate`. Commit the generated SQL. Never edit a migration that has been applied anywhere — add a new one.
 - `src/schema/auth.ts` must match what Better Auth (core + admin plugin) expects. Check the Better Auth docs before changing it.
 - Only `src/queue.ts` imports `bullmq`. Pin BullMQ exactly: its Postgres backend is new (added in 6.3).
+- Live updates: writers call `notifyScanUpdate` after committing; the NOTIFY payload is only the scan id, listeners re-read the rows (`src/notify.ts`).
 
 ### Auth
 
@@ -83,6 +86,8 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 - App shell: signed-in pages are children of the `/` route in `src/router.ts`, rendered inside `src/layouts/AppLayout.vue` (sidebar on desktop, collapsible to icons and remembered; drawer on mobile). To add a page, add a child route and an entry in `items` in `src/components/AppSidebar.vue` (`adminOnly: true` hides it from regular users). The sidebar lists only pages that exist, with no placeholders.
 - The signed-in user's profile is `currentUser` from `src/lib/current-user.ts`. It is loaded once by the layout, so pages don't refetch `/me`.
 - Theme: light/dark/auto via `useTheme()`. The inline script in `index.html` must stay in sync with it.
+- Live data over SSE (`useScanStream`) is the one exception to "API only through Eden": Eden has no SSE client, so it uses a native `EventSource`. Everything else goes through `api.*`.
+- Text written by the LLM (finding write-ups) is untrusted. Render it only through `renderMarkdown` in `src/lib/markdown.ts` (raw HTML off); it is the only source of `v-html` input.
 - Icons: Iconify via Tailwind classes, Lucide set: `<span class="icon-[lucide--play] size-4" aria-hidden="true" />`. No icon component libraries.
 - UI primitives live in `src/components/ui/` (`AppButton`, …). No UI kit. Add Reka UI only when a component needs accessible interaction (menus, dialogs, comboboxes).
 - Copy: sentence case, plain verbs, and buttons say what they do.
@@ -97,7 +102,8 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 
 - Only `worker` gets the Docker socket and the Strix toolchain. Never mount `/var/run/docker.sock` into `api` or `web`.
 - Never log or return secrets: LLM keys, `BETTER_AUTH_SECRET`, OAuth secrets, session tokens.
-- Scan targets and instructions are user input that ends up on a command line. Pass them as an argv array (`Bun.spawn([...])`), never through a shell string.
+- Scan targets and instructions are user input that ends up on a command line. Pass them as an argv array (`Bun.spawn([...])`), never through a shell string. Targets are limited to 1–3 `http(s)` URLs: never accept local paths (they would be mounted into the sandbox).
+- Strix runs with the worker's environment minus `DATABASE_URL`, so the agent cannot see DB credentials.
 - Don't hand-edit the generated files: `packages/db/migrations/*`, `bun.lock`.
 
 ## Git
@@ -109,5 +115,6 @@ Commit messages are one short imperative sentence, capitalized, with no prefix o
 - **Run / scan**: one execution of the Strix CLI against one or more targets. Maps to one `strix_runs/<run_name>/` directory.
 - **Target**: what Strix tests: a URL, repo, local path, domain or IP.
 - **Project**: a group of targets and runs with its own members (planned).
+- **Finding**: one vulnerability Strix reported (`vulnerabilities.json`), stored per scan in `scan_finding`.
 - **Usage cap**: a per-user LLM spend limit, enforced by the panel from `run.json` `llm_usage.cost` and Strix's `--max-budget-usd` (planned).
 - **Admin**: a user with role `admin`. Sees and manages all projects and users.

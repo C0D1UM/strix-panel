@@ -13,9 +13,8 @@ import type { PoolClient } from 'pg'
 export const QUEUE_SCHEMA = 'bullmq'
 export const SCAN_QUEUE = 'scans'
 
-// Placeholder payload until runs are designed.
 export interface ScanJobData {
-  runId: string
+  scanId: string
 }
 
 export type ScanJob = Job<ScanJobData>
@@ -29,6 +28,18 @@ export function createScanQueue(connectionString: string) {
     { connection: connection(connectionString) },
     createPostgresBackend,
   )
+}
+
+export type ScanQueue = ReturnType<typeof createScanQueue>
+
+// One job per scan: the job id is the scan id, so a scan can't be enqueued twice. Scans are never retried.
+export function enqueueScan(queue: ScanQueue, scanId: string) {
+  return queue.add('scan', { scanId }, { jobId: scanId, attempts: 1 })
+}
+
+// Removes a scan's job if it has not started yet. Returns false when there was nothing to remove.
+export async function removeScanJob(queue: ScanQueue, scanId: string) {
+  return (await queue.remove(scanId)) === 1
 }
 
 export function createScanWorker(

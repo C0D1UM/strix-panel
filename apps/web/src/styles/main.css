@@ -20,6 +20,15 @@
   --accent-fg: #ffffff;
   --danger: #b42318;
   --danger-surface: #fdecea;
+  --success: #15803d;
+  --success-surface: #e6f6ec;
+  --warning: #b45309;
+  --warning-surface: #fdf1e0;
+  --sev-critical: #9f1239;
+  --sev-high: #c2410c;
+  --sev-medium: #b45309;
+  --sev-low: #1d4ed8;
+  --sev-info: #5b6282;
 }
 
 .dark {
@@ -34,6 +43,15 @@
   --accent-fg: #0d1a1c;
   --danger: #f97066;
   --danger-surface: #3a1a1a;
+  --success: #4ade80;
+  --success-surface: #143222;
+  --warning: #fbbf24;
+  --warning-surface: #3a2a10;
+  --sev-critical: #fb7185;
+  --sev-high: #fb923c;
+  --sev-medium: #fbbf24;
+  --sev-low: #60a5fa;
+  --sev-info: #9097ad;
 }
 
 @theme inline {
@@ -49,6 +67,15 @@
   --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
   --color-danger-surface: var(--danger-surface);
+  --color-success: var(--success);
+  --color-success-surface: var(--success-surface);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-sev-critical: var(--sev-critical);
+  --color-sev-high: var(--sev-high);
+  --color-sev-medium: var(--sev-medium);
+  --color-sev-low: var(--sev-low);
+  --color-sev-info: var(--sev-info);
 }
 
 @layer base {
@@ -64,5 +91,42 @@
 
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-accent;
+  }
+}
+
+@layer components {
+  /* Rendered markdown from scan findings. Tokens only, like everything else. */
+  .markdown {
+    @apply text-sm leading-relaxed;
+  }
+  .markdown > * + * {
+    @apply mt-2;
+  }
+  .markdown h1,
+  .markdown h2,
+  .markdown h3,
+  .markdown h4 {
+    @apply mt-4 font-semibold;
+  }
+  .markdown ul {
+    @apply list-disc pl-5;
+  }
+  .markdown ol {
+    @apply list-decimal pl-5;
+  }
+  .markdown a {
+    @apply text-accent underline;
+  }
+  .markdown code {
+    @apply rounded bg-surface-sunken px-1 py-0.5 font-mono text-xs;
+  }
+  .markdown pre {
+    @apply overflow-x-auto rounded-md bg-surface-sunken p-3 font-mono text-xs;
+  }
+  .markdown pre code {
+    @apply bg-transparent p-0;
+  }
+  .markdown blockquote {
+    @apply border-l-2 border-line pl-3 text-fg-muted;
   }
 }

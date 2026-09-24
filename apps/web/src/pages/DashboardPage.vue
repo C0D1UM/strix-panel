@@ -26,11 +26,17 @@ import { currentUser } from '../lib/current-user'
       aria-labelledby="scans-empty"
     >
       <span class="icon-[lucide--radar] size-8 text-fg-muted" aria-hidden="true" />
-      <h2 id="scans-empty" class="mt-3 font-semibold">No scans yet</h2>
+      <h2 id="scans-empty" class="mt-3 font-semibold">Start a scan</h2>
       <p class="mx-auto mt-1 max-w-sm text-sm text-fg-muted">
-        Projects and scans are coming next. Once they land, your runs, findings and token usage will
-        show up here.
+        Point Strix at a URL and follow its progress, findings and token usage live.
       </p>
+      <RouterLink
+        :to="{ name: 'scans' }"
+        class="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-accent-fg hover:bg-accent-hover"
+      >
+        <span class="icon-[lucide--radar] size-4" aria-hidden="true" />
+        Go to scans
+      </RouterLink>
     </section>
   </div>
 </template>

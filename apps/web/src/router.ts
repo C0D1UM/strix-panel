@@ -29,6 +29,13 @@ export const router = createRouter({
           name: 'dashboard',
           component: () => import('./pages/DashboardPage.vue'),
         },
+        { path: 'scans', name: 'scans', component: () => import('./pages/ScansPage.vue') },
+        {
+          path: 'scans/:id',
+          name: 'scan',
+          component: () => import('./pages/ScanDetailPage.vue'),
+          props: true,
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

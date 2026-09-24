@@ -17,6 +17,7 @@ interface NavItem {
 // Add pages here as they ship. `adminOnly` items are hidden from regular users.
 const items: NavItem[] = [
   { to: { name: 'dashboard' }, label: 'Dashboard', icon: 'icon-[lucide--layout-dashboard]' },
+  { to: { name: 'scans' }, label: 'Scans', icon: 'icon-[lucide--radar]' },
 ]
 
 const props = defineProps<{

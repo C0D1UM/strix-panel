@@ -11,7 +11,8 @@
   "dependencies": {
     "@sinclair/typebox": "0.34.52",
     "@strix-panel/db": "workspace:*",
-    "@strix-panel/shared": "workspace:*"
+    "@strix-panel/shared": "workspace:*",
+    "drizzle-orm": "0.45.3"
   },
   "devDependencies": {
     "@types/bun": "1.4.2"
