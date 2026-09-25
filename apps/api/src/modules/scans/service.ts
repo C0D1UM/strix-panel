@@ -1,6 +1,12 @@
 import { schema } from '@strix-panel/db'
 import { notifyScanUpdate } from '@strix-panel/db/notify'
-import { enqueueScan, releaseScanJob, removeScanJob } from '@strix-panel/db/queue'
+import {
+  enqueueReport,
+  enqueueScan,
+  getReportJob,
+  releaseScanJob,
+  removeScanJob,
+} from '@strix-panel/db/queue'
 import {
   checkScanResume,
   MAX_SCAN_TARGETS,
@@ -8,11 +14,13 @@ import {
   type ScanMode,
   type ScanStatus,
 } from '@strix-panel/shared'
+import { reportPdfPath } from '@strix-panel/shared/env'
 import { and, asc, count, desc, eq, gt, sql, type SQL } from 'drizzle-orm'
 import type { AuthUser } from '../../lib/auth'
 import { db } from '../../lib/db'
+import { env } from '../../lib/env'
 import { BadRequestError, ConflictError, NotFoundError } from '../../lib/errors'
-import { scanQueue } from '../../lib/queue'
+import { reportQueue, scanQueue } from '../../lib/queue'
 
 type Viewer = Pick<AuthUser, 'id' | 'role'>
 type ScanRow = typeof schema.scan.$inferSelect
@@ -183,6 +191,54 @@ export async function getReport(viewer: Viewer, id: string): Promise<string> {
     throw new NotFoundError('The report is not available yet', 'REPORT_NOT_AVAILABLE')
   }
   return scan.reportMd
+}
+
+// PDF reports are rendered on demand by the worker with Strix's own renderer, into a shared directory that only
+// caches them: a file can disappear (the production volume lives in memory), and is then simply rendered again.
+export interface ReportPdfStatus {
+  state: 'none' | 'pending' | 'ready' | 'failed'
+  error: string | null
+}
+
+async function reportPdfState(id: string): Promise<ReportPdfStatus> {
+  if (await Bun.file(reportPdfPath(env.REPORT_DIR, id)).exists())
+    return { state: 'ready', error: null }
+  const job = await getReportJob(reportQueue, id)
+  if (job.state === 'pending') return { state: 'pending', error: null }
+  if (job.state === 'failed') return { state: 'failed', error: job.error }
+  // `completed` without a file: the cached PDF is gone.
+  return { state: 'none', error: null }
+}
+
+async function findCompletedScan(viewer: Viewer, id: string) {
+  const { scan } = await findScan(viewer, id)
+  if (scan.status !== 'completed') {
+    throw new ConflictError('REPORT_NOT_AVAILABLE', 'Only a completed scan has a PDF report')
+  }
+  return scan
+}
+
+export async function getReportPdfStatus(viewer: Viewer, id: string): Promise<ReportPdfStatus> {
+  await findCompletedScan(viewer, id)
+  return reportPdfState(id)
+}
+
+// Starts a render unless the PDF is ready or already being made. A failed render is retried.
+export async function requestReportPdf(viewer: Viewer, id: string): Promise<ReportPdfStatus> {
+  await findCompletedScan(viewer, id)
+  const current = await reportPdfState(id)
+  if (current.state === 'ready' || current.state === 'pending') return current
+  await enqueueReport(reportQueue, id)
+  return { state: 'pending', error: null }
+}
+
+export async function getReportPdf(viewer: Viewer, id: string) {
+  await findCompletedScan(viewer, id)
+  const file = Bun.file(reportPdfPath(env.REPORT_DIR, id))
+  if (!(await file.exists())) {
+    throw new NotFoundError('The PDF report is not ready', 'REPORT_NOT_AVAILABLE')
+  }
+  return file
 }
 
 async function transition(id: string, from: ScanStatus, to: ScanStatus, message: string) {

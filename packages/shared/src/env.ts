@@ -1,5 +1,7 @@
 import type { Static, TObject } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 // Validates env vars against a TypeBox schema: applies defaults, coerces strings to numbers/booleans,
 // and throws one readable error listing every invalid variable. `defaults` fill in variables that are
@@ -25,3 +27,9 @@ export function splitList(value: string): string[] {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean)
 }
+
+// Where the worker writes rendered PDF reports and the API reads them. Shared by both apps, so they agree on it in
+// development; production mounts an in-memory volume there. The files are a cache: they may vanish at any time.
+export const DEFAULT_REPORT_DIR = join(tmpdir(), 'strix-panel-reports')
+
+export const reportPdfPath = (reportDir: string, scanId: string) => join(reportDir, `${scanId}.pdf`)

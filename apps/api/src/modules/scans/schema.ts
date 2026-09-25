@@ -106,3 +106,11 @@ export const ScanFindingResponse = t.Object({
 export const ErrorResponse = t.Object({
   error: t.Object({ code: t.String(), message: t.String() }),
 })
+
+export const ReportPdfResponse = t.Object({
+  state: t.Union(
+    [t.Literal('none'), t.Literal('pending'), t.Literal('ready'), t.Literal('failed')],
+    { description: 'none: never requested, or the cached PDF expired. Request it again.' },
+  ),
+  error: t.Nullable(t.String()),
+})

@@ -2,6 +2,8 @@
 # `docker compose pull && docker compose up -d` (pin STRIX_PANEL_VERSION in .env). Then open http://localhost:8080.
 x-app-env: &app-env
   DATABASE_URL: postgres://${POSTGRES_USER:-strix}:${POSTGRES_PASSWORD:-strix}@postgres:5432/${POSTGRES_DB:-strix_panel}
+  # PDF reports: written by the worker, served by the api (the `reports` volume).
+  REPORT_DIR: /app/reports
 
 services:
   postgres:
@@ -43,6 +45,8 @@ services:
       AUTH_EMAIL_PASSWORD_ENABLED: ${AUTH_EMAIL_PASSWORD_ENABLED:-true}
       AUTH_REGISTRATION_ENABLED: ${AUTH_REGISTRATION_ENABLED:-true}
       ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
+    volumes:
+      - reports:/app/reports:ro
     healthcheck:
       test:
         [
@@ -70,6 +74,7 @@ services:
       # its sandbox containers. Only the worker gets it — never mount it into api or web.
       - /var/run/docker.sock:/var/run/docker.sock
       - strix-runs:/app/strix_runs
+      - reports:/app/reports
     healthcheck:
       test:
         [
@@ -102,3 +107,10 @@ volumes:
   postgres-data:
   strix-runs:
   caddy-data:
+  # Rendered PDF reports, kept in memory only (never on the host disk). A cache: lost on restart, re-rendered on
+  # the next download.
+  reports:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=256m

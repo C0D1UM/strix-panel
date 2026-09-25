@@ -1,6 +1,6 @@
 import { Type } from '@sinclair/typebox'
 import { devDatabaseUrl } from '@strix-panel/db'
-import { parseEnv } from '@strix-panel/shared/env'
+import { DEFAULT_REPORT_DIR, parseEnv } from '@strix-panel/shared/env'
 
 const schema = Type.Object({
   NODE_ENV: Type.String({ default: 'development' }),
@@ -17,6 +17,11 @@ const schema = Type.Object({
   // Each scan runs in its own directory below this one, so its strix_runs/ holds exactly one run.
   STRIX_WORK_DIR: Type.String({ default: 'strix_runs' }),
   STRIX_POLL_INTERVAL_MS: Type.Integer({ minimum: 100, default: 2000 }),
+  // Python interpreter of the Strix install, used to render PDF reports with Strix's own renderer. Empty turns PDF
+  // reports off (a binary install of Strix has no Python to call). The worker image sets it.
+  STRIX_PYTHON: Type.String({ default: '' }),
+  // Rendered PDFs, read back by the API. Must be the same directory as the API's REPORT_DIR.
+  REPORT_DIR: Type.String({ default: DEFAULT_REPORT_DIR }),
 })
 
 // Runs with no .env in development; production must set DATABASE_URL.
