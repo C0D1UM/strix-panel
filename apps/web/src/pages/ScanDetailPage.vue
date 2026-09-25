@@ -345,6 +345,12 @@ const codeLocations = (report: Record<string, unknown>): string[] => {
       </section>
     </template>
 
-    <p v-else class="text-sm text-fg-muted">Loading…</p>
+    <div v-else role="status" class="flex min-h-[60vh] items-center justify-center">
+      <span
+        class="icon-[lucide--loader-circle] size-8 animate-spin text-fg-muted"
+        aria-hidden="true"
+      />
+      <span class="sr-only">Loading scan</span>
+    </div>
   </div>
 </template>
