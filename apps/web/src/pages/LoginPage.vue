@@ -15,6 +15,7 @@ const route = useRoute()
 const router = useRouter()
 
 const providers = ref<Provider[]>([])
+const registrationEnabled = ref(false)
 const configError = ref(false)
 const mode = ref<'sign-in' | 'sign-up'>('sign-in')
 const name = ref('')
@@ -32,6 +33,7 @@ const redirectTo = computed(() =>
 // Better Auth redirects back here with ?error=<code> when OAuth sign-in fails.
 const oauthErrors: Record<string, string> = {
   access_denied: 'Google sign-in was cancelled.',
+  signup_disabled: 'New accounts are disabled on this panel. Ask an admin for access.',
 }
 if (typeof route.query.error === 'string') {
   error.value =
@@ -41,8 +43,10 @@ if (typeof route.query.error === 'string') {
 
 onMounted(async () => {
   const { data } = await api.v1.config.get()
-  if (data) providers.value = data.auth.providers
-  else configError.value = true
+  if (data) {
+    providers.value = data.auth.providers
+    registrationEnabled.value = data.auth.registrationEnabled
+  } else configError.value = true
 })
 
 async function signInWithGoogle() {
@@ -185,7 +189,7 @@ async function submitEmail() {
             >
               {{ mode === 'sign-in' ? 'Sign in' : 'Create account' }}
             </AppButton>
-            <p class="text-center text-sm text-fg-muted">
+            <p v-if="registrationEnabled" class="text-center text-sm text-fg-muted">
               {{ mode === 'sign-in' ? 'New here?' : 'Already have an account?' }}
               <button
                 type="button"

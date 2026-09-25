@@ -79,6 +79,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 
 - Better Auth, configured in `apps/api/src/lib/auth.ts`. Defaults: in development, email+password on and Google off; in production, Google on and email+password off. `compose.yaml` overrides that to email+password on and Google off, so a fresh deployment works without an OAuth client. `BETTER_AUTH_URL` defaults to `http://localhost:<WEB_PORT>` in development and is required in production.
 - `ALLOWED_EMAIL_DOMAINS` is enforced at sign-up and on every new session.
+- `AUTH_REGISTRATION_ENABLED=false` (default `true`) blocks every new account, including the first one: email sign-up and first-time Google sign-in. Existing users still sign in, and `db:seed` still creates its admin.
 - The first user becomes admin (`promoteIfFirstAdmin`, serialized by an advisory lock).
 - Roles: `admin`, `user` (`packages/shared`).
 

@@ -10,7 +10,9 @@ describe('system', () => {
 
   test('GET /api/v1/config lists enabled sign-in methods', async () => {
     const res = await request('/api/v1/config')
-    expect(await res.json()).toEqual({ auth: { providers: ['email'] } })
+    expect(await res.json()).toEqual({
+      auth: { providers: ['email'], registrationEnabled: true },
+    })
   })
 
   test('unknown routes use the error shape', async () => {
