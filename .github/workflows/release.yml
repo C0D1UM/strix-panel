@@ -38,7 +38,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-      - uses: docker/build-push-action@v7
+      - id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/${{ matrix.image }}.Dockerfile
@@ -48,6 +49,20 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      - name: Summary
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### \`${{ matrix.image }}\` image"
+            echo
+            echo "Digest: \`${DIGEST}\`"
+            echo
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   release:
     needs: images
@@ -85,4 +100,12 @@ jobs:
           args=(--title "$TAG" --notes-file notes.md --generate-notes --verify-tag)
           if [ -n "$previous" ]; then args+=(--notes-start-tag "$previous"); fi
           if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
-          gh release create "$TAG" "${args[@]}"
+          url="$(gh release create "$TAG" "${args[@]}")"
+
+          {
+            echo "# Release ${TAG}"
+            echo
+            echo "${url}"
+            echo
+            cat notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
