@@ -99,6 +99,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 - Text written by the LLM (finding write-ups) is untrusted. Render it only through `renderMarkdown` in `src/lib/markdown.ts` (raw HTML off); it is the only source of `v-html` input.
 - Icons: Iconify via Tailwind classes, Lucide set: `<span class="icon-[lucide--play] size-4" aria-hidden="true" />`. No icon component libraries.
 - Charts: Chart.js through vue-chartjs. Call `registerCharts()` (`src/lib/charts.ts`) and register any new Chart.js pieces there. Canvas can't use Tailwind classes, so chart colors come from `useChartColors()`, which reads the semantic tokens and follows theme changes. Never hard-code chart colors.
+- Action feedback: `useToast().toast(message, 'success' | 'error')` (`src/composables/useToast.ts`), rendered by `AppToaster` in `AppLayout`. Keep inline errors for things that block the page (a failed load).
 - UI primitives live in `src/components/ui/` (`AppButton`, …). No UI kit. Add Reka UI only when a component needs accessible interaction (menus, dialogs, comboboxes).
 - Copy: sentence case, plain verbs, and buttons say what they do.
 

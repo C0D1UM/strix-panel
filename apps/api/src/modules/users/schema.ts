@@ -1,4 +1,3 @@
-import { SCAN_STATUSES } from '@strix-panel/shared'
 import { t } from 'elysia'
 
 const Timestamp = t.String({ format: 'date-time' })
@@ -22,9 +21,9 @@ export const AdminUserResponse = t.Object({
   ]),
   runs: t.Number(),
   costUsd: t.Number(),
-  lastRun: t.Nullable(
-    t.Object({ id: t.String(), status: t.UnionEnum(SCAN_STATUSES), createdAt: Timestamp }),
-  ),
+  // Since the start of the current UTC month.
+  costThisMonthUsd: t.Number(),
+  lastRunAt: t.Nullable(Timestamp),
   createdAt: Timestamp,
 })
 

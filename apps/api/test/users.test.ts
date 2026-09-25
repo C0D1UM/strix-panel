@@ -34,7 +34,8 @@ type AdminUser = {
   status: string
   runs: number
   costUsd: number
-  lastRun: { id: string; status: string } | null
+  costThisMonthUsd: number
+  lastRunAt: string | null
 }
 
 const list = async (cookie = admin) => {
@@ -67,6 +68,8 @@ describe('GET /api/v1/admin/users', () => {
   })
 
   test('returns usage, last run and every status, pending first', async () => {
+    const now = new Date()
+    const thisMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 1))
     await db.insert(schema.scan).values([
       {
         userId: aliceId,
@@ -82,7 +85,7 @@ describe('GET /api/v1/admin/users', () => {
         scanMode: 'quick',
         status: 'failed',
         costUsd: 0.5,
-        createdAt: new Date('2026-02-01T00:00:00Z'),
+        createdAt: thisMonth,
       },
     ])
     await db.update(schema.user).set({ approvedAt: null }).where(eq(schema.user.id, bobId))
@@ -90,13 +93,20 @@ describe('GET /api/v1/admin/users', () => {
     expect(res.status).toBe(200)
     expect(users.map((u) => u.id)).toEqual([bobId, adminId, aliceId])
     const a = users.find((u) => u.id === aliceId)!
-    expect(a).toMatchObject({ status: 'active', role: 'user', runs: 2, costUsd: 1.75 })
-    expect(a.lastRun?.status).toBe('failed')
+    expect(a).toMatchObject({
+      status: 'active',
+      role: 'user',
+      runs: 2,
+      costUsd: 1.75,
+      costThisMonthUsd: 0.5,
+      lastRunAt: thisMonth.toISOString(),
+    })
     expect(users.find((u) => u.id === bobId)).toMatchObject({
       status: 'pending',
       runs: 0,
       costUsd: 0,
-      lastRun: null,
+      costThisMonthUsd: 0,
+      lastRunAt: null,
     })
   })
 

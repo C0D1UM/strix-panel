@@ -54,6 +54,19 @@ export const CONFIRMATIONS: Partial<
   },
 }
 
+export const ACTION_DONE: Record<UserAction, (name: string) => string> = {
+  approve: (name) => `${name} approved.`,
+  disable: (name) => `${name} disabled.`,
+  enable: (name) => `${name} enabled.`,
+  remove: (name) => `${name} removed.`,
+  restore: (name) => `${name} restored.`,
+  makeAdmin: (name) => `${name} is now an admin.`,
+  removeAdmin: (name) => `${name} is no longer an admin.`,
+}
+
+export const actionFailed = (action: UserAction, name: string, reason: string) =>
+  `Couldn't ${ACTION_LABELS[action].toLowerCase()} ${name}: ${reason}`
+
 export function availableActions(user: Pick<AdminUser, 'status' | 'role'>): UserAction[] {
   const roleAction: UserAction = user.role === 'admin' ? 'removeAdmin' : 'makeAdmin'
   switch (user.status) {

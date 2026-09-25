@@ -12,7 +12,8 @@ const u = (over: Partial<AdminUser>): AdminUser => ({
   status: 'active',
   runs: 0,
   costUsd: 0,
-  lastRun: null,
+  costThisMonthUsd: 0,
+  lastRunAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   ...over,
 })
