@@ -431,9 +431,70 @@ describe('GET /api/v1/scans/:id/stream', () => {
     controller.abort()
   }, 15_000)
 
+  test('closes an open stream once the viewer is signed out (disabled or removed)', async () => {
+    const { scan } = await create(alice)
+    await setStatus(scan.id, 'running')
+    const controller = new AbortController()
+    const res = await request(`/api/v1/scans/${scan.id}/stream`, {
+      headers: { cookie: alice },
+      signal: controller.signal,
+    })
+    const { reader } = await readFrames(res, (f) => f.length >= 1)
+
+    await db.delete(schema.session)
+    await notifyScanUpdate(db, scan.id)
+    const frames: string[] = []
+    let ended = false
+    for (let i = 0; i < 10 && !ended; i++) {
+      const { value, done } = await reader.read()
+      ended = done
+      if (value) frames.push(typeof value === 'string' ? value : new TextDecoder().decode(value))
+    }
+    expect(ended).toBe(true)
+    expect(frames.some((f) => f.includes('event: scan\n'))).toBe(false)
+    controller.abort()
+  }, 15_000)
+
   test('is a 404 for scans the viewer cannot see', async () => {
     const { scan } = await create(bob)
     const res = await request(`/api/v1/scans/${scan.id}/stream`, { headers: { cookie: alice } })
     expect(res.status).toBe(404)
+  })
+})
+
+describe('pending approval', () => {
+  const pend = (email: string) =>
+    db.update(schema.user).set({ approvedAt: null }).where(eq(schema.user.email, email))
+
+  test('a pending user cannot create a scan', async () => {
+    await pend('alice@example.com')
+    const { res, scan } = await create(alice)
+    expect(res.status).toBe(403)
+    expect((scan.error as { code: string }).code).toBe('PENDING_APPROVAL')
+  })
+
+  test('a pending user cannot resume a scan', async () => {
+    const { scan } = await create(alice)
+    await db.update(schema.scan).set({ status: 'failed' }).where(eq(schema.scan.id, scan.id))
+    await pend('alice@example.com')
+    const res = await request(`/api/v1/scans/${scan.id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice },
+    })
+    expect(res.status).toBe(403)
+    expect(await errorCode(res)).toBe('PENDING_APPROVAL')
+  })
+})
+
+describe('removed owners', () => {
+  test('scan owner is marked removed', async () => {
+    const { scan } = await create(alice)
+    expect((scan.owner as { removed: boolean }).removed).toBe(false)
+    await db
+      .update(schema.user)
+      .set({ deletedAt: new Date() })
+      .where(eq(schema.user.email, 'alice@example.com'))
+    const res = await request(`/api/v1/scans/${scan.id}`, { headers: { cookie: admin } })
+    expect(((await res.json()) as { owner: { removed: boolean } }).owner.removed).toBe(true)
   })
 })

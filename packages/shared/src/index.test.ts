@@ -4,7 +4,9 @@ import {
   isAllowedEmail,
   isFinishedScanStatus,
   normalizeScanTarget,
+  toRole,
   type ResumableScan,
+  userStatus,
 } from './index'
 
 describe('isAllowedEmail', () => {
@@ -75,5 +77,38 @@ describe('checkScanResume', () => {
     }
     expect(checkScanResume(scan({ agentCount: 0 }))).toMatchObject({ code: 'SCAN_NOT_RESUMABLE' })
     expect(checkScanResume(scan({ costUsd: 5 }))).toMatchObject({ code: 'SCAN_BUDGET_EXHAUSTED' })
+  })
+})
+
+describe('userStatus', () => {
+  const base = { approvedAt: new Date(), banned: false, deletedAt: null }
+
+  test('active when approved, not banned, not removed', () => {
+    expect(userStatus(base)).toBe('active')
+  })
+
+  test('pending when not approved', () => {
+    expect(userStatus({ ...base, approvedAt: null })).toBe('pending')
+  })
+
+  test('disabled beats pending', () => {
+    expect(userStatus({ ...base, approvedAt: null, banned: true })).toBe('disabled')
+  })
+
+  test('removed beats everything', () => {
+    expect(userStatus({ approvedAt: null, banned: true, deletedAt: new Date() })).toBe('removed')
+  })
+
+  test('treats a null banned as not banned', () => {
+    expect(userStatus({ ...base, banned: null })).toBe('active')
+  })
+})
+
+describe('toRole', () => {
+  test('keeps known roles and falls back to user', () => {
+    expect(toRole('admin')).toBe('admin')
+    expect(toRole('user')).toBe('user')
+    expect(toRole('owner')).toBe('user')
+    expect(toRole(null)).toBe('user')
   })
 })

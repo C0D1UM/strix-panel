@@ -1,11 +1,13 @@
 import { openapi } from '@elysiajs/openapi'
 import { Elysia } from 'elysia'
 import { auth, authOpenApi } from './lib/auth'
+import { NotFoundError } from './lib/errors'
 import { configModule } from './modules/config'
 import { dashboardModule } from './modules/dashboard'
 import { healthModule } from './modules/health'
 import { meModule } from './modules/me'
 import { scansModule } from './modules/scans'
+import { usersModule } from './modules/users'
 import { errorsPlugin } from './plugins/errors'
 
 const authDocs = await authOpenApi()
@@ -30,11 +32,22 @@ export const app = new Elysia({ prefix: '/api' })
     }),
   )
   // Better Auth owns /api/auth/*; `parse: 'none'` leaves the body stream for it to read.
-  .all('/auth/*', ({ request }) => auth.handler(request), {
-    parse: 'none',
-    detail: { hide: true },
-  })
+  // Except the admin plugin's own endpoints (/api/auth/admin/*): they skip our guardrails (self, last admin,
+  // soft delete). Admins manage users through /api/v1/admin/users instead.
+  .all(
+    '/auth/*',
+    ({ request }) => {
+      if (new URL(request.url).pathname.startsWith('/api/auth/admin/')) throw new NotFoundError()
+      return auth.handler(request)
+    },
+    {
+      parse: 'none',
+      detail: { hide: true },
+    },
+  )
   .use(healthModule)
-  .group('/v1', (v1) => v1.use(configModule).use(meModule).use(scansModule).use(dashboardModule))
+  .group('/v1', (v1) =>
+    v1.use(configModule).use(meModule).use(scansModule).use(dashboardModule).use(usersModule),
+  )
 
 export type App = typeof app

@@ -12,6 +12,10 @@ export const user = pgTable('user', {
   banned: boolean('banned').notNull().default(false),
   banReason: text('ban_reason'),
   banExpires: timestamp('ban_expires', { withTimezone: true }),
+  // Null = waiting for admin approval (AUTH_AUTO_APPROVE_USERS=false). Set at sign-up otherwise.
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  // Soft delete: sign-in refused, scans kept. Cleared by restore.
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })

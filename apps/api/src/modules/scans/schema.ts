@@ -19,7 +19,12 @@ export const ScanAgentSchema = t.Object({
   error: t.Nullable(t.String()),
 })
 
-export const ScanOwner = t.Object({ id: t.String(), name: t.String(), email: t.String() })
+export const ScanOwner = t.Object({
+  id: t.String(),
+  name: t.String(),
+  email: t.String(),
+  removed: t.Boolean(),
+})
 
 export const ScanResponse = t.Object({
   id: t.String(),

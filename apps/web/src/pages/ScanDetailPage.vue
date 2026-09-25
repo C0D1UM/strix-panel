@@ -8,6 +8,7 @@ import SeverityBadge from '../components/SeverityBadge.vue'
 import AppButton from '../components/ui/AppButton.vue'
 import { useScanStream } from '../composables/useScanStream'
 import { api } from '../lib/api'
+import { currentUser } from '../lib/current-user'
 import { renderMarkdown } from '../lib/markdown'
 import {
   formatDuration,
@@ -32,6 +33,7 @@ let clock: ReturnType<typeof setInterval> | undefined
 
 const canStop = computed(() => scan.value?.status === 'queued' || scan.value?.status === 'running')
 // Same rule as the API.
+const pending = computed(() => currentUser.value?.approved === false)
 const canResume = computed(
   () => !!scan.value && checkScanResume({ ...scan.value, agentCount: scan.value.agents.length }).ok,
 )
@@ -163,7 +165,8 @@ const codeLocations = (report: Record<string, unknown>): string[] => {
             </li>
           </ul>
           <p class="mt-2 text-xs text-fg-muted">
-            <span class="capitalize">{{ scan.scanMode }}</span> scan · by {{ scan.owner.name }}
+            <span class="capitalize">{{ scan.scanMode }}</span> scan · by {{ scan.owner.name
+            }}<template v-if="scan.owner.removed"> (removed)</template>
             <template v-if="scan.runName"> · run {{ scan.runName }}</template>
           </p>
         </div>
@@ -179,7 +182,13 @@ const codeLocations = (report: Record<string, unknown>): string[] => {
             <span class="icon-[lucide--square] size-4" aria-hidden="true" />
             Stop scan
           </AppButton>
-          <AppButton v-if="canResume" :loading="resuming" @click="resume">
+          <AppButton
+            v-if="canResume"
+            :loading="resuming"
+            :disabled="pending"
+            :title="pending ? 'Waiting for admin approval' : undefined"
+            @click="resume"
+          >
             <span class="icon-[lucide--play] size-4" aria-hidden="true" />
             Resume scan
           </AppButton>

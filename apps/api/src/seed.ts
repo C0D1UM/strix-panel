@@ -1,6 +1,6 @@
 import { schema } from '@strix-panel/db'
 import type { ScanAgent } from '@strix-panel/db/schema'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { auth } from './lib/auth'
 import { db, pool } from './lib/db'
 import { env } from './lib/env'
@@ -31,7 +31,10 @@ export async function seedAdmin(input: {
 
   if (existing) {
     if (existing.role === 'admin') return 'unchanged'
-    await db.update(schema.user).set({ role: 'admin' }).where(eq(schema.user.email, email))
+    await db
+      .update(schema.user)
+      .set({ role: 'admin', approvedAt: sql`coalesce(${schema.user.approvedAt}, now())` })
+      .where(eq(schema.user.email, email))
     return 'promoted'
   }
 
@@ -48,7 +51,10 @@ export async function seedAdmin(input: {
     accountId: user.id,
     password: await ctx.password.hash(input.password),
   })
-  await db.update(schema.user).set({ role: 'admin' }).where(eq(schema.user.email, email))
+  await db
+    .update(schema.user)
+    .set({ role: 'admin', approvedAt: sql`coalesce(${schema.user.approvedAt}, now())` })
+    .where(eq(schema.user.email, email))
   return 'created'
 }
 

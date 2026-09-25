@@ -1,6 +1,27 @@
 export const ROLES = ['admin', 'user'] as const
 export type Role = (typeof ROLES)[number]
 
+export function toRole(role: string | null | undefined): Role {
+  return ROLES.includes(role as Role) ? (role as Role) : 'user'
+}
+
+export const USER_STATUSES = ['active', 'pending', 'disabled', 'removed'] as const
+export type UserStatus = (typeof USER_STATUSES)[number]
+
+export interface UserStatusInput {
+  approvedAt: Date | string | null | undefined
+  banned: boolean | null | undefined
+  deletedAt: Date | string | null | undefined
+}
+
+// Priority: removed > disabled > pending > active. Restoring only clears deletedAt, so the earlier state returns.
+export function userStatus(user: UserStatusInput): UserStatus {
+  if (user.deletedAt) return 'removed'
+  if (user.banned) return 'disabled'
+  if (!user.approvedAt) return 'pending'
+  return 'active'
+}
+
 export const THEMES = ['light', 'dark', 'auto'] as const
 export type Theme = (typeof THEMES)[number]
 

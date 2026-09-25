@@ -34,6 +34,8 @@ const redirectTo = computed(() =>
 const oauthErrors: Record<string, string> = {
   access_denied: 'Google sign-in was cancelled.',
   signup_disabled: 'New accounts are disabled on this panel. Ask an admin for access.',
+  BANNED_USER: 'Your account is disabled. Contact an admin.',
+  ACCOUNT_REMOVED: 'Your account has been removed. Contact an admin.',
 }
 if (typeof route.query.error === 'string') {
   error.value =

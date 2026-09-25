@@ -1,4 +1,5 @@
 import { Elysia, t } from 'elysia'
+import { auth } from '../../lib/auth'
 import { authPlugin } from '../../plugins/auth'
 import {
   CreateScanBody,
@@ -130,8 +131,10 @@ export const scansModule = new Elysia({ name: 'scans', prefix: '/scans' })
       const scan = await getScan(user, params.id)
       // no-transform: stops proxies such as Cloudflare from compressing, and so buffering, the stream.
       set.headers['cache-control'] = 'no-cache, no-transform'
+      const resolveViewer = async () =>
+        (await auth.api.getSession({ headers: request.headers }))?.user ?? null
       return streamScan(
-        user,
+        resolveViewer,
         scan,
         request.headers.get('last-event-id') ?? undefined,
         request.signal,

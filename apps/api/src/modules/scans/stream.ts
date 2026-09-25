@@ -1,6 +1,7 @@
 // Server-sent events for one scan: a snapshot, then the scan row and new feed events after every NOTIFY.
 import { isFinishedScanStatus } from '@strix-panel/shared'
 import { sse } from 'elysia'
+import { NotFoundError } from '../../lib/errors'
 import { scanListener } from '../../lib/scan-listener'
 import { getScan, listEventsUnchecked, type ScanDto } from './service'
 
@@ -13,8 +14,10 @@ const findingsChanged = (a: ScanDto, b: ScanDto) =>
 
 // `initial` comes from the route, which checked access before the response started: an async generator
 // can't turn a late error into a 404 once its first chunk is on the wire.
+// `resolveViewer` re-reads the session on every wake-up, so a stream closes once its user is signed out
+// (disabled or removed) or loses access to the scan (demoted).
 export async function* streamScan(
-  viewer: Viewer,
+  resolveViewer: () => Promise<Viewer | null>,
   initial: ScanDto,
   lastEventId: string | undefined,
   signal: AbortSignal,
@@ -49,13 +52,19 @@ export async function* streamScan(
         clearTimeout(timer)
       }
       if (signal.aborted) return
+      const viewer = await resolveViewer()
+      if (!viewer) return
       if (!pending) {
         yield sse({ event: 'ping', data: '' })
         continue
       }
       pending = false
 
-      const next = await getScan(viewer, scanId)
+      const next = await getScan(viewer, scanId).catch((error: unknown) => {
+        if (error instanceof NotFoundError) return null
+        throw error
+      })
+      if (!next) return
       const fresh = await listEventsUnchecked(scanId, last)
       yield sse({ event: 'scan', data: next })
       for (const event of fresh) {

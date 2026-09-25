@@ -15,6 +15,20 @@
       "when": 1790224879501,
       "tag": "0001_scans",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790368187009,
+      "tag": "0002_user_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790368187424,
+      "tag": "0003_approve_existing_users",
+      "breakpoints": true
     }
   ]
 }
