@@ -32,7 +32,8 @@ export function createScanQueue(connectionString: string) {
 
 export type ScanQueue = ReturnType<typeof createScanQueue>
 
-// One job per scan: the job id is the scan id, so a scan can't be enqueued twice. Scans are never retried.
+// One job per scan: the job id is the scan id, so a scan can't be enqueued twice. BullMQ never retries a scan;
+// a user retry frees the id with `releaseScanJob` and enqueues it again.
 export function enqueueScan(queue: ScanQueue, scanId: string) {
   return queue.add('scan', { scanId }, { jobId: scanId, attempts: 1 })
 }
@@ -40,6 +41,16 @@ export function enqueueScan(queue: ScanQueue, scanId: string) {
 // Removes a scan's job if it has not started yet. Returns false when there was nothing to remove.
 export async function removeScanJob(queue: ScanQueue, scanId: string) {
   return (await queue.remove(scanId)) === 1
+}
+
+// Removes a finished scan's job so its id can be reused. Returns false while a worker still holds the job.
+export async function releaseScanJob(queue: ScanQueue, scanId: string) {
+  try {
+    await queue.remove(scanId)
+  } catch {
+    return false
+  }
+  return (await queue.getJob(scanId)) === undefined
 }
 
 export function createScanWorker(

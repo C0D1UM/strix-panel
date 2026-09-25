@@ -70,7 +70,7 @@ bun run dev                  # API :3000, web :5173, worker
 
 Open http://localhost:5173. API docs: http://localhost:5173/api/docs.
 
-To change anything (ports, database, Google sign-in), copy `.env.example` to `.env` and uncomment what you need. `DATABASE_URL` follows `DB_PORT` and `BETTER_AUTH_URL` follows `WEB_PORT`, so running several worktrees side by side only needs distinct ports (`DB_PORT`, `API_PORT`, `WEB_PORT`, `WORKER_HEALTH_PORT`).
+To change anything (ports, database, Google sign-in), copy `.env.dev.example` to `.env` and uncomment what you need (`.env.example` is the production template for servers). `DATABASE_URL` follows `DB_PORT` and `BETTER_AUTH_URL` follows `WEB_PORT`, so running several worktrees side by side only needs distinct ports (`DB_PORT`, `API_PORT`, `WEB_PORT`, `WORKER_HEALTH_PORT`).
 
 | Command               | What it does                                                     |
 | --------------------- | ---------------------------------------------------------------- |

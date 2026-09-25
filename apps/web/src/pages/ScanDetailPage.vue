@@ -23,12 +23,15 @@ const { scan, events, findingsVersion, connected, error } = useScanStream(props.
 
 const findings = ref<ScanFinding[]>([])
 const stopping = ref(false)
-const stopError = ref<string | null>(null)
+const retrying = ref(false)
+const actionError = ref<string | null>(null)
 const feed = ref<HTMLElement | null>(null)
 const now = ref(new Date())
 let clock: ReturnType<typeof setInterval> | undefined
 
 const canStop = computed(() => scan.value?.status === 'queued' || scan.value?.status === 'running')
+// Mirrors the API: only a scan that failed before Strix created its run can be retried.
+const canRetry = computed(() => scan.value?.status === 'failed' && scan.value.runName === null)
 const totalFindings = computed(() =>
   scan.value ? Object.values(scan.value.findings).reduce((a, b) => a + b, 0) : 0,
 )
@@ -43,15 +46,23 @@ async function loadFindings() {
   if (data) findings.value = data
 }
 
+const errorMessage = (err: { value: unknown }, fallback: string) =>
+  (err.value as { error?: { message?: string } } | undefined)?.error?.message ?? fallback
+
 async function stop() {
   stopping.value = true
-  stopError.value = null
+  actionError.value = null
   const { error: err } = await api.v1.scans({ id: props.id }).stop.post()
   stopping.value = false
-  if (err) {
-    const body = err.value as { error?: { message?: string } } | undefined
-    stopError.value = body?.error?.message ?? 'Could not stop the scan.'
-  }
+  if (err) actionError.value = errorMessage(err, 'Could not stop the scan.')
+}
+
+async function retry() {
+  retrying.value = true
+  actionError.value = null
+  const { error: err } = await api.v1.scans({ id: props.id }).retry.post()
+  retrying.value = false
+  if (err) actionError.value = errorMessage(err, 'Could not retry the scan.')
 }
 
 // Auto-scroll the feed only when the reader is already at the bottom.
@@ -165,10 +176,14 @@ const codeLocations = (report: Record<string, unknown>): string[] => {
             <span class="icon-[lucide--square] size-4" aria-hidden="true" />
             Stop scan
           </AppButton>
+          <AppButton v-if="canRetry" :loading="retrying" @click="retry">
+            <span class="icon-[lucide--rotate-ccw] size-4" aria-hidden="true" />
+            Retry scan
+          </AppButton>
         </div>
       </header>
 
-      <p v-if="stopError" role="alert" class="mt-3 text-sm text-danger">{{ stopError }}</p>
+      <p v-if="actionError" role="alert" class="mt-3 text-sm text-danger">{{ actionError }}</p>
       <p
         v-if="scan.error"
         role="alert"

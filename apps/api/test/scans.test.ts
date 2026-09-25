@@ -223,6 +223,44 @@ describe('POST /api/v1/scans/:id/stop', () => {
   })
 })
 
+describe('POST /api/v1/scans/:id/retry', () => {
+  const retry = (id: string, cookie: string) =>
+    request(`/api/v1/scans/${id}/retry`, { method: 'POST', headers: { cookie } })
+  const fail = (id: string, runName: string | null = null) =>
+    db
+      .update(schema.scan)
+      .set({ status: 'failed', runName, error: 'boom', finishedAt: new Date() })
+      .where(eq(schema.scan.id, id))
+
+  test('a scan that failed before Strix started is queued again with a fresh job', async () => {
+    const { scan } = await create(alice)
+    await fail(scan.id)
+    const res = await retry(scan.id, admin)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ status: 'queued', error: null, finishedAt: null })
+    expect((await scanQueue.getJob(scan.id))?.data).toEqual({ scanId: scan.id })
+    const events = await db
+      .select()
+      .from(schema.scanEvent)
+      .where(eq(schema.scanEvent.scanId, scan.id))
+    expect(events.map((e) => e.message)).toContain('Scan retried')
+  })
+
+  test('scans that ran Strix, or did not fail, conflict; others get 404', async () => {
+    const { scan } = await create(alice)
+    const queued = await retry(scan.id, alice)
+    expect(queued.status).toBe(409)
+    expect(await errorCode(queued)).toBe('SCAN_NOT_RETRYABLE')
+
+    await fail(scan.id, 'example-com_a1b2')
+    const ran = await retry(scan.id, alice)
+    expect(ran.status).toBe(409)
+    expect(await errorCode(ran)).toBe('SCAN_NOT_RETRYABLE')
+
+    expect((await retry(scan.id, bob)).status).toBe(404)
+  })
+})
+
 describe('GET /api/v1/scans/:id/stream', () => {
   // Reads SSE frames until `until` matches or the stream ends. Frames are separated by a blank line.
   async function readFrames(res: Response, until: (frames: string[]) => boolean) {
