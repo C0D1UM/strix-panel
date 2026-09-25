@@ -18,12 +18,20 @@ export function useScanStream(scanId: string, options: ScanStreamOptions = {}) {
   const error = ref<string | null>(null)
 
   const ES = options.eventSource ?? EventSource
-  const source = new ES(`/api/v1/scans/${scanId}/stream`)
   const seen = new Set<string>()
+  let source: EventSource
+  // Settles the promise returned by `reconnect` once the new connection answers.
+  let onSettled: (() => void) | null = null
+
+  const settle = () => {
+    onSettled?.()
+    onSettled = null
+  }
 
   const close = () => {
     source.close()
     connected.value = false
+    settle()
   }
 
   const append = (incoming: ScanEvent[]) => {
@@ -39,41 +47,60 @@ export function useScanStream(scanId: string, options: ScanStreamOptions = {}) {
     if (isFinishedScanStatus(next.status)) close()
   }
 
-  source.addEventListener('open', () => {
-    connected.value = true
-    error.value = null
-  })
-  source.addEventListener('snapshot', (message) => {
-    const data = JSON.parse((message as MessageEvent<string>).data) as {
-      scan: Scan
-      events: ScanEvent[]
-    }
-    append(data.events)
-    applyScan(data.scan)
-  })
-  source.addEventListener('scan', (message) => {
-    applyScan(JSON.parse((message as MessageEvent<string>).data) as Scan)
-  })
-  source.addEventListener('event', (message) => {
-    append([JSON.parse((message as MessageEvent<string>).data) as ScanEvent])
-  })
-  source.addEventListener('findings', () => {
-    findingsVersion.value += 1
-  })
-  source.addEventListener('error', () => {
+  const connect = () => {
+    const current = new ES(`/api/v1/scans/${scanId}/stream`)
+    source = current
+
+    current.addEventListener('open', () => {
+      connected.value = true
+      error.value = null
+    })
+    current.addEventListener('snapshot', (message) => {
+      const data = JSON.parse((message as MessageEvent<string>).data) as {
+        scan: Scan
+        events: ScanEvent[]
+      }
+      append(data.events)
+      applyScan(data.scan)
+      settle()
+    })
+    current.addEventListener('scan', (message) => {
+      applyScan(JSON.parse((message as MessageEvent<string>).data) as Scan)
+    })
+    current.addEventListener('event', (message) => {
+      append([JSON.parse((message as MessageEvent<string>).data) as ScanEvent])
+    })
+    current.addEventListener('findings', () => {
+      findingsVersion.value += 1
+    })
+    current.addEventListener('error', () => {
+      connected.value = false
+      // CLOSED means the browser gave up (e.g. a 404); CONNECTING means it is retrying by itself.
+      if (current.readyState !== ES.CLOSED) return
+      settle()
+      if (!(scan.value && isFinishedScanStatus(scan.value.status))) {
+        error.value = scan.value
+          ? 'Live updates disconnected. Reload to reconnect.'
+          : 'Scan not found'
+      }
+    })
+  }
+
+  // Opens a fresh connection, e.g. after a finished scan was resumed. Resolves on the new snapshot.
+  const reconnect = () => {
+    source.close()
+    settle()
     connected.value = false
-    // CLOSED means the browser gave up (e.g. a 404); CONNECTING means it is retrying by itself.
-    if (
-      source.readyState === ES.CLOSED &&
-      !(scan.value && isFinishedScanStatus(scan.value.status))
-    ) {
-      error.value = scan.value
-        ? 'Live updates disconnected. Reload to reconnect.'
-        : 'Scan not found'
-    }
-  })
+    error.value = null
+    return new Promise<void>((resolve) => {
+      onSettled = resolve
+      connect()
+    })
+  }
+
+  connect()
 
   if (getCurrentScope()) onScopeDispose(close)
 
-  return { scan, events, findingsVersion, connected, error, close }
+  return { scan, events, findingsVersion, connected, error, close, reconnect }
 }
