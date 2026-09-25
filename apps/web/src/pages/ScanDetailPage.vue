@@ -19,7 +19,7 @@ import {
 
 const props = defineProps<{ id: string }>()
 
-const { scan, events, findingsVersion, connected, error } = useScanStream(props.id)
+const { scan, events, findingsVersion, connected, error, reconnect } = useScanStream(props.id)
 
 const findings = ref<ScanFinding[]>([])
 const stopping = ref(false)
@@ -63,8 +63,10 @@ async function resume() {
   resuming.value = true
   actionError.value = null
   const { error: err } = await api.v1.scans({ id: props.id }).resume.post()
-  resuming.value = false
+  // The stream closed when the scan finished; keep loading until the new one sends its snapshot.
   if (err) actionError.value = errorMessage(err, 'Could not resume the scan.')
+  else await reconnect()
+  resuming.value = false
 }
 
 // Auto-scroll the feed only when the reader is already at the bottom.

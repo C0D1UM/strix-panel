@@ -96,3 +96,38 @@ test('an unreachable scan reports not found', () => {
   source.emit('error')
   expect(stream.error.value).toBe('Scan not found')
 })
+
+test('reconnect opens a new stream after a finished scan and resolves on its snapshot', async () => {
+  const { stream, source } = setup()
+  source.emit('snapshot', { scan: scan('failed'), events: [event('e1')] })
+  expect(source.closed).toBe(true)
+
+  let settled = false
+  const done = stream.reconnect().then(() => (settled = true))
+  const next = FakeEventSource.instances[1]!
+  expect(next.url).toBe('/api/v1/scans/s1/stream')
+  await Promise.resolve()
+  expect(settled).toBe(false)
+
+  next.emit('open')
+  next.emit('snapshot', { scan: scan('queued'), events: [event('e1'), event('e2')] })
+  await done
+  expect(next.closed).toBe(false)
+  expect(stream.connected.value).toBe(true)
+  expect(stream.scan.value?.status).toBe('queued')
+  expect(stream.events.value.map((e) => e.id)).toEqual(['e1', 'e2'])
+
+  next.emit('scan', scan('running'))
+  expect(stream.scan.value?.status).toBe('running')
+})
+
+test('reconnect resolves when the new stream fails', async () => {
+  const { stream, source } = setup()
+  source.emit('snapshot', { scan: scan('stopped'), events: [] })
+  const done = stream.reconnect()
+  const next = FakeEventSource.instances[1]!
+  next.readyState = FakeEventSource.CLOSED
+  next.emit('error')
+  await done
+  expect(stream.connected.value).toBe(false)
+})
