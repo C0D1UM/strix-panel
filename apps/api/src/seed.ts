@@ -35,8 +35,19 @@ export async function seedAdmin(input: {
     return 'promoted'
   }
 
-  // Goes through Better Auth so the password is hashed and ALLOWED_EMAIL_DOMAINS is enforced.
-  await auth.api.signUpEmail({ body: { email, password: input.password, name: input.name } })
+  // Better Auth's internal adapter, not the sign-up endpoint, so it works with AUTH_REGISTRATION_ENABLED=false.
+  // It still hashes the password and runs our user hooks (ALLOWED_EMAIL_DOMAINS).
+  const ctx = await auth.$context
+  const user = await ctx.internalAdapter.createUser(
+    { email, name: input.name, emailVerified: false },
+    { method: 'email-password' },
+  )
+  await ctx.internalAdapter.linkAccount({
+    userId: user.id,
+    providerId: 'credential',
+    accountId: user.id,
+    password: await ctx.password.hash(input.password),
+  })
   await db.update(schema.user).set({ role: 'admin' }).where(eq(schema.user.email, email))
   return 'created'
 }

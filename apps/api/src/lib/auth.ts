@@ -41,9 +41,18 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: 'pg', schema }),
   // Ids come from Postgres (uuidv7() column default).
   advanced: { database: { generateId: false } },
-  emailAndPassword: { enabled: env.AUTH_EMAIL_PASSWORD_ENABLED },
+  emailAndPassword: {
+    enabled: env.AUTH_EMAIL_PASSWORD_ENABLED,
+    disableSignUp: !env.AUTH_REGISTRATION_ENABLED,
+  },
   socialProviders: env.AUTH_GOOGLE_ENABLED
-    ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
+    ? {
+        google: {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          disableSignUp: !env.AUTH_REGISTRATION_ENABLED,
+        },
+      }
     : {},
   plugins: [admin(), openAPI()],
   databaseHooks: {

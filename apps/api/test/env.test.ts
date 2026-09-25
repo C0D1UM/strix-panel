@@ -9,6 +9,11 @@ describe('loadEnv', () => {
     expect(env.BETTER_AUTH_URL).toBe('http://localhost:5173')
     expect(env.AUTH_EMAIL_PASSWORD_ENABLED).toBe(true)
     expect(env.AUTH_GOOGLE_ENABLED).toBe(false)
+    expect(env.AUTH_REGISTRATION_ENABLED).toBe(true)
+  })
+
+  test('AUTH_REGISTRATION_ENABLED can turn registration off', () => {
+    expect(loadEnv({ AUTH_REGISTRATION_ENABLED: 'false' }).AUTH_REGISTRATION_ENABLED).toBe(false)
   })
 
   test('BETTER_AUTH_URL follows WEB_PORT unless set explicitly', () => {

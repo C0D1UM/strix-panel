@@ -22,6 +22,8 @@ const schema = Type.Object({
   GOOGLE_CLIENT_ID: Type.String({ default: '' }),
   GOOGLE_CLIENT_SECRET: Type.String({ default: '' }),
   AUTH_EMAIL_PASSWORD_ENABLED: Type.Boolean(),
+  // false blocks every new account (email sign-up and first-time Google sign-in); existing users still sign in.
+  AUTH_REGISTRATION_ENABLED: Type.Boolean({ default: true }),
   // Comma-separated. Empty means any email may sign in.
   ALLOWED_EMAIL_DOMAINS: Type.String({ default: '' }),
   // Local-only admin created by `bun run db:seed`.
