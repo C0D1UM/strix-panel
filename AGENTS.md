@@ -11,7 +11,8 @@ Strix facts that shape the design:
 - Needs Docker: whatever runs `strix` needs the Docker socket.
 - The LLM is configured by env: `STRIX_LLM` (required), `LLM_API_KEY`. Budget cap: `--max-budget`.
 - No flag to choose the run name; no event-log file. Live progress comes from polling the run directory.
-- Pinned version: `strix-agent==1.6.2` (`docker/worker.Dockerfile`, `STRIX_VERSION`). Upgrade deliberately — the output file formats are not a public API.
+- Version: latest `strix-agent` 1.x at image build time (`docker/worker.Dockerfile`, build arg `STRIX_VERSION`, empty by default; pin one with `--build-arg STRIX_VERSION=1.6.2`). Developed against 1.6.2; the output file formats are not a public API, so a new minor can break parsing.
+- Strix checks for a `docker` binary on `PATH` before it starts, then talks to the daemon through the socket. The worker image installs `docker-ce-cli` for that; it has no daemon of its own.
 
 ## Architecture
 
@@ -34,6 +35,8 @@ Scan lifecycle: `queued` → `running` → `completed` | `failed` | `stopped`, w
 
 ## Commands
 
+Env files: every machine has one `.env`. A server copies `.env.example` (only what `compose.yaml` passes to the containers); a dev machine copies `.env.dev.example`. A checkout is never both, so nothing separates them at runtime.
+
 ```sh
 bun install
 bun run dev:infra      # Postgres (compose.dev.yaml) on DB_PORT (default 5432)
@@ -45,7 +48,7 @@ bun run db:generate    # after editing packages/db/src/schema/*
 docker compose up -d --build   # prod-like stack on :8080, built from source (images are tagged like the GHCR ones)
 ```
 
-Worktrees: each worktree gets its own dev Postgres (the Compose project is named after the folder). Give each a distinct `DB_PORT`, `API_PORT`, `WEB_PORT` and `WORKER_HEALTH_PORT` (via env or `.env`); `DATABASE_URL` and `BETTER_AUTH_URL` follow them automatically.
+Worktrees: each worktree gets its own dev Postgres (the Compose project is named after the folder). Give each a distinct `DB_PORT`, `API_PORT`, `WEB_PORT` and `WORKER_HEALTH_PORT` (via the shell or `.env`); `DATABASE_URL` and `BETTER_AUTH_URL` follow them automatically.
 
 Tests need Postgres. They always use separate databases (`strix_panel_test_<package>`, created and migrated automatically by each test preload); they follow `DB_PORT`, or set `TEST_DATABASE_URL` to a base URL (the package suffix is appended).
 
@@ -62,7 +65,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 - Every route declares `response` (and `body`/`query`/`params` when present) schemas and `detail: { tags, summary }`. Swagger is generated from them, so a route without schemas is undocumented.
 - Errors: throw `AppError` subclasses from `src/lib/errors.ts`. Every error response is `{ error: { code, message } }` with an UPPER_SNAKE `code`. Never return ad-hoc error objects.
 - Auth: use the macros from `src/plugins/auth.ts` — `{ requireAuth: true }` or `{ requireRole: 'admin' }` — which put `user` and `session` on the context. Never read cookies or call `auth.api.getSession` in a route yourself.
-- Env: add variables to the TypeBox schema in `src/lib/env.ts` (and, commented out, to `.env.example`). Never read `process.env` elsewhere. Development must keep working with no `.env`: give every new variable a default, or a development default in `DEVELOPMENT_DEFAULTS` when production must set it explicitly.
+- Env: add variables to the TypeBox schema in `src/lib/env.ts` and, commented out, to `.env.dev.example`. If production needs to set it too, also pass it through in `compose.yaml` and add it to `.env.example`. Never read `process.env` elsewhere. Development must keep working with no `.env`: give every new variable a default, or a development default in `DEVELOPMENT_DEFAULTS` when production must set it explicitly.
 
 ### Database (`packages/db`)
 

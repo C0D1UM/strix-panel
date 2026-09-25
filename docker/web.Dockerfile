@@ -1,5 +1,5 @@
 # Builds the SPA, then serves it with Caddy, which also reverse-proxies /api to the API.
-FROM oven/bun:1.3.8-alpine AS build
+FROM oven/bun:1-alpine AS build
 WORKDIR /app
 
 COPY package.json bun.lock ./
