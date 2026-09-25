@@ -3,6 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppSidebar from '../components/AppSidebar.vue'
 import BrandMark from '../components/BrandMark.vue'
+import AppToaster from '../components/ui/AppToaster.vue'
 import { useSidebar } from '../composables/useSidebar'
 import { currentUser, loadCurrentUser } from '../lib/current-user'
 import { signOut } from '../lib/session'
@@ -121,5 +122,7 @@ onBeforeUnmount(() => {
     <main class="min-w-0 flex-1">
       <RouterView />
     </main>
+
+    <AppToaster />
   </div>
 </template>

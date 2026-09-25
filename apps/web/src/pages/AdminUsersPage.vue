@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import ScanStatusBadge from '../components/ScanStatusBadge.vue'
 import UserActionsMenu from '../components/UserActionsMenu.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 import UserStatusBadge from '../components/UserStatusBadge.vue'
@@ -8,8 +7,11 @@ import AppButton from '../components/ui/AppButton.vue'
 import AppDialog from '../components/ui/AppDialog.vue'
 import { api } from '../lib/api'
 import { currentUser, loadCurrentUser } from '../lib/current-user'
-import { formatDate, formatUsd } from '../lib/scans'
+import { useToast } from '../composables/useToast'
+import { formatDay, formatUsd } from '../lib/scans'
 import {
+  ACTION_DONE,
+  actionFailed,
   CONFIRMATIONS,
   filterUsers,
   runUserAction,
@@ -23,7 +25,7 @@ import {
 const users = ref<AdminUser[]>([])
 const loading = ref(true)
 const loadError = ref<string | null>(null)
-const actionError = ref<string | null>(null)
+const { toast } = useToast()
 const tab = ref<UserTab>('all')
 const search = ref('')
 const busyId = ref<string | null>(null)
@@ -61,14 +63,14 @@ function select(user: AdminUser, action: UserAction) {
 async function run(user: AdminUser, action: UserAction) {
   confirming.value = null
   busyId.value = user.id
-  actionError.value = null
   const result = await runUserAction(user.id, action)
   busyId.value = null
   if (result.error) {
-    actionError.value = result.error
+    toast(actionFailed(action, user.name, result.error), 'error')
     return
   }
   users.value = users.value.map((u) => (u.id === user.id ? result.data! : u))
+  toast(ACTION_DONE[action](user.name))
   // Refreshes the sidebar's pending badge.
   await loadCurrentUser()
 }
@@ -127,7 +129,6 @@ onMounted(load)
     </div>
 
     <p v-if="loadError" role="alert" class="mt-6 text-sm text-danger">{{ loadError }}</p>
-    <p v-if="actionError" role="alert" class="mt-4 text-sm text-danger">{{ actionError }}</p>
 
     <p
       v-if="!loading && !loadError && visible.length === 0"
@@ -147,7 +148,8 @@ onMounted(load)
             <th class="px-4 py-3 font-medium">Role</th>
             <th class="px-4 py-3 font-medium">Status</th>
             <th class="px-4 py-3 text-right font-medium">Runs</th>
-            <th class="px-4 py-3 text-right font-medium">Cost</th>
+            <th class="px-4 py-3 text-right font-medium">This month</th>
+            <th class="px-4 py-3 text-right font-medium">Total cost</th>
             <th class="px-4 py-3 font-medium">Last run</th>
             <th class="px-4 py-3"><span class="sr-only">Actions</span></th>
           </tr>
@@ -180,17 +182,12 @@ onMounted(load)
             <td class="px-4 py-3">{{ user.role === 'admin' ? 'Admin' : 'Member' }}</td>
             <td class="px-4 py-3"><UserStatusBadge :status="user.status" /></td>
             <td class="px-4 py-3 text-right tabular-nums">{{ user.runs }}</td>
+            <td class="px-4 py-3 text-right tabular-nums">
+              {{ formatUsd(user.costThisMonthUsd) }}
+            </td>
             <td class="px-4 py-3 text-right tabular-nums">{{ formatUsd(user.costUsd) }}</td>
-            <td class="px-4 py-3">
-              <RouterLink
-                v-if="user.lastRun"
-                :to="{ name: 'scan', params: { id: user.lastRun.id } }"
-                class="flex items-center gap-2 whitespace-nowrap hover:underline"
-              >
-                <ScanStatusBadge :status="user.lastRun.status" />
-                <span class="text-fg-muted">{{ formatDate(user.lastRun.createdAt) }}</span>
-              </RouterLink>
-              <span v-else class="text-fg-muted">—</span>
+            <td data-testid="last-run" class="px-4 py-3 whitespace-nowrap text-fg-muted">
+              {{ user.lastRunAt ? formatDay(user.lastRunAt) : '—' }}
             </td>
             <td class="px-4 py-3 text-right">
               <UserActionsMenu

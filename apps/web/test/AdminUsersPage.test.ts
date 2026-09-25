@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import UserActionsMenu from '../src/components/UserActionsMenu.vue'
+import { useToast } from '../src/composables/useToast'
 import AdminUsersPage from '../src/pages/AdminUsersPage.vue'
 import type * as currentUserModule from '../src/lib/current-user'
 import { currentUser } from '../src/lib/current-user'
@@ -8,8 +10,15 @@ import { currentUser } from '../src/lib/current-user'
 type CurrentUserModule = typeof currentUserModule
 
 const get = vi.fn()
+const approve = vi.fn()
 vi.mock('../src/lib/api', () => ({
-  api: { v1: { admin: { users: Object.assign(() => ({}), { get: () => get() }) } } },
+  api: {
+    v1: {
+      admin: {
+        users: Object.assign(() => ({ approve: { post: () => approve() } }), { get: () => get() }),
+      },
+    },
+  },
 }))
 vi.mock('../src/lib/current-user', async (original) => ({
   ...(await original<CurrentUserModule>()),
@@ -31,7 +40,8 @@ const row = (id: string, name: string, status: string, role = 'user') => ({
   status,
   runs: 1,
   costUsd: 0.5,
-  lastRun: null,
+  costThisMonthUsd: 0.25,
+  lastRunAt: id === 'a' ? '2026-09-24T15:30:00.000Z' : null,
   createdAt: '2026-01-01T00:00:00.000Z',
 })
 
@@ -57,6 +67,8 @@ beforeEach(() => {
 })
 afterEach(() => {
   currentUser.value = null
+  const { toasts } = useToast()
+  toasts.value = []
 })
 
 const mountPage = async () => {
@@ -99,4 +111,46 @@ test('shows an empty state for an empty tab', async () => {
   const wrapper = await mountPage()
   await wrapper.find('[data-testid="tab-disabled"]').trigger('click')
   expect(wrapper.text()).toContain('No disabled users.')
+})
+
+const annRow = (wrapper: Awaited<ReturnType<typeof mountPage>>) =>
+  wrapper
+    .findAll('[data-testid="user-row"]')
+    .find((r) => r.find('[data-testid="user-name"]').text() === 'Ann')!
+
+test('shows both costs and only the date of the last run', async () => {
+  const wrapper = await mountPage()
+  const ann = annRow(wrapper)
+  expect(ann.text()).toContain('$0.2500')
+  expect(ann.text()).toContain('$0.5000')
+  const lastRun = ann.find('[data-testid="last-run"]')
+  expect(lastRun.text()).toBe(
+    new Date('2026-09-24T15:30:00.000Z').toLocaleDateString(undefined, { dateStyle: 'medium' }),
+  )
+  expect(lastRun.find('a').exists()).toBe(false)
+})
+
+test('a successful action shows a success toast', async () => {
+  approve.mockResolvedValue({ data: row('p', 'Pat', 'active'), error: null })
+  const wrapper = await mountPage()
+  const pat = wrapper.findAllComponents(UserActionsMenu).find((m) => m.props('user').id === 'p')!
+  pat.vm.$emit('select', 'approve')
+  await flushPromises()
+  expect(useToast().toasts.value).toMatchObject([{ message: 'Pat approved.', tone: 'success' }])
+})
+
+test('a failed action shows an error toast with the reason', async () => {
+  approve.mockResolvedValue({
+    data: null,
+    error: {
+      value: { error: { code: 'ALREADY_APPROVED', message: 'This user is already approved' } },
+    },
+  })
+  const wrapper = await mountPage()
+  const pat = wrapper.findAllComponents(UserActionsMenu).find((m) => m.props('user').id === 'p')!
+  pat.vm.$emit('select', 'approve')
+  await flushPromises()
+  expect(useToast().toasts.value).toMatchObject([
+    { message: "Couldn't approve Pat: This user is already approved", tone: 'error' },
+  ])
 })

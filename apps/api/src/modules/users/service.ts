@@ -1,6 +1,6 @@
 import { schema } from '@strix-panel/db'
-import { toRole, userStatus, type Role, type ScanStatus } from '@strix-panel/shared'
-import { and, asc, count, desc, eq, isNull, ne, sql, type SQL } from 'drizzle-orm'
+import { toRole, userStatus, type Role } from '@strix-panel/shared'
+import { and, asc, count, eq, isNull, ne, sql, type SQL } from 'drizzle-orm'
 import { lockAdmins, type Tx } from '../../lib/admin-lock'
 import { db } from '../../lib/db'
 import { BadRequestError, ConflictError, NotFoundError } from '../../lib/errors'
@@ -10,26 +10,20 @@ type UserRow = typeof schema.user.$inferSelect
 
 const { user, scan, session } = schema
 
+// This month = since the start of the current UTC month, by scan creation time.
 const usage = db
   .select({
     userId: scan.userId,
     runs: sql<number>`count(*)::int`.as('runs'),
     costUsd: sql<number>`coalesce(sum(${scan.costUsd}), 0)::float8`.as('cost_usd'),
+    costThisMonthUsd: sql<number>`coalesce(sum(${scan.costUsd}) filter (
+      where ${scan.createdAt} >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'
+    ), 0)::float8`.as('cost_this_month_usd'),
+    lastRunAt: sql<Date>`max(${scan.createdAt})`.mapWith(scan.createdAt).as('last_run_at'),
   })
   .from(scan)
   .groupBy(scan.userId)
   .as('usage')
-
-const lastRun = db
-  .selectDistinctOn([scan.userId], {
-    userId: scan.userId,
-    id: scan.id,
-    status: scan.status,
-    createdAt: scan.createdAt,
-  })
-  .from(scan)
-  .orderBy(scan.userId, desc(scan.createdAt))
-  .as('last_run')
 
 async function selectUsers(where?: SQL) {
   const rows = await db
@@ -37,13 +31,11 @@ async function selectUsers(where?: SQL) {
       user,
       runs: usage.runs,
       costUsd: usage.costUsd,
-      lastRunId: lastRun.id,
-      lastRunStatus: lastRun.status,
-      lastRunAt: lastRun.createdAt,
+      costThisMonthUsd: usage.costThisMonthUsd,
+      lastRunAt: usage.lastRunAt,
     })
     .from(user)
     .leftJoin(usage, eq(usage.userId, user.id))
-    .leftJoin(lastRun, eq(lastRun.userId, user.id))
     .where(where)
     .orderBy(asc(user.name))
   return rows.map((row) => ({
@@ -55,14 +47,8 @@ async function selectUsers(where?: SQL) {
     status: userStatus(row.user),
     runs: row.runs ?? 0,
     costUsd: row.costUsd ?? 0,
-    lastRun:
-      row.lastRunId && row.lastRunStatus && row.lastRunAt
-        ? {
-            id: row.lastRunId,
-            status: row.lastRunStatus as ScanStatus,
-            createdAt: row.lastRunAt.toISOString(),
-          }
-        : null,
+    costThisMonthUsd: row.costThisMonthUsd ?? 0,
+    lastRunAt: row.lastRunAt?.toISOString() ?? null,
     createdAt: row.user.createdAt.toISOString(),
   }))
 }
