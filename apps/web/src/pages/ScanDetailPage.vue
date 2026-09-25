@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FINDING_SEVERITIES, type ScanEventType } from '@strix-panel/shared'
+import { checkScanResume, FINDING_SEVERITIES, type ScanEventType } from '@strix-panel/shared'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ScanAgentTree from '../components/ScanAgentTree.vue'
 import ScanStatusBadge from '../components/ScanStatusBadge.vue'
@@ -23,15 +23,17 @@ const { scan, events, findingsVersion, connected, error } = useScanStream(props.
 
 const findings = ref<ScanFinding[]>([])
 const stopping = ref(false)
-const retrying = ref(false)
+const resuming = ref(false)
 const actionError = ref<string | null>(null)
 const feed = ref<HTMLElement | null>(null)
 const now = ref(new Date())
 let clock: ReturnType<typeof setInterval> | undefined
 
 const canStop = computed(() => scan.value?.status === 'queued' || scan.value?.status === 'running')
-// Mirrors the API: only a scan that failed before Strix created its run can be retried.
-const canRetry = computed(() => scan.value?.status === 'failed' && scan.value.runName === null)
+// Same rule as the API.
+const canResume = computed(
+  () => !!scan.value && checkScanResume({ ...scan.value, agentCount: scan.value.agents.length }).ok,
+)
 const totalFindings = computed(() =>
   scan.value ? Object.values(scan.value.findings).reduce((a, b) => a + b, 0) : 0,
 )
@@ -57,12 +59,12 @@ async function stop() {
   if (err) actionError.value = errorMessage(err, 'Could not stop the scan.')
 }
 
-async function retry() {
-  retrying.value = true
+async function resume() {
+  resuming.value = true
   actionError.value = null
-  const { error: err } = await api.v1.scans({ id: props.id }).retry.post()
-  retrying.value = false
-  if (err) actionError.value = errorMessage(err, 'Could not retry the scan.')
+  const { error: err } = await api.v1.scans({ id: props.id }).resume.post()
+  resuming.value = false
+  if (err) actionError.value = errorMessage(err, 'Could not resume the scan.')
 }
 
 // Auto-scroll the feed only when the reader is already at the bottom.
@@ -176,9 +178,9 @@ const codeLocations = (report: Record<string, unknown>): string[] => {
             <span class="icon-[lucide--square] size-4" aria-hidden="true" />
             Stop scan
           </AppButton>
-          <AppButton v-if="canRetry" :loading="retrying" @click="retry">
-            <span class="icon-[lucide--rotate-ccw] size-4" aria-hidden="true" />
-            Retry scan
+          <AppButton v-if="canResume" :loading="resuming" @click="resume">
+            <span class="icon-[lucide--play] size-4" aria-hidden="true" />
+            Resume scan
           </AppButton>
         </div>
       </header>

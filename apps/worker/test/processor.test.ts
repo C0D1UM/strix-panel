@@ -39,8 +39,8 @@ async function createScan(status: 'queued' | 'running' = 'queued') {
   return scan!
 }
 
-async function processor(scenario: string) {
-  const workDir = await mkdtemp(join(tmpdir(), 'strix-worker-'))
+async function processor(scenario: string, reuseWorkDir?: string) {
+  const workDir = reuseWorkDir ?? (await mkdtemp(join(tmpdir(), 'strix-worker-')))
   const removed: string[] = []
   const sandboxes: Sandboxes = {
     remove: async (scanId) => void removed.push(scanId),
@@ -153,7 +153,7 @@ test('a redelivered job for a running scan marks it failed instead of restarting
   await process(scan.id)
   const done = (await load(scan.id))!
   expect(done.status).toBe('failed')
-  expect(done.error).toBe('Worker restarted during the scan')
+  expect(done.error).toBe('Worker restarted during the scan. Resume it to continue.')
   expect(removed).toEqual([scan.id])
 })
 
@@ -164,4 +164,48 @@ test('a scan that is no longer queued is skipped', async () => {
   await process(scan.id)
   expect((await load(scan.id))!.status).toBe('stopped')
   expect(await events(scan.id)).toHaveLength(0)
+})
+
+const requeue = (id: string) =>
+  db.update(schema.scan).set({ status: 'queued', finishedAt: null }).where(eq(schema.scan.id, id))
+
+test('a resumed scan continues its run without replaying the feed', async () => {
+  const scan = await createScan()
+  const first = await processor('failed')
+  await first.process(scan.id)
+  const failed = (await load(scan.id))!
+  expect(failed.status).toBe('failed')
+  expect(failed.runName).toBe('example-com_ab12')
+
+  await requeue(scan.id)
+  // Same work dir: the run files of the first attempt are still there.
+  const second = await processor('completed', first.workDir)
+  await second.process(scan.id)
+
+  const done = (await load(scan.id))!
+  expect(done.status).toBe('completed')
+  expect(done.startedAt).toEqual(failed.startedAt)
+  expect(done.costUsd).toBe(0.25)
+  const argv = (await Bun.file(join(second.workDir, scan.id, 'argv.txt')).text()).trim()
+  expect(argv.split('\n')).toEqual(['-n', '--resume', 'example-com_ab12', '--max-budget', '5'])
+  const started = (await events(scan.id)).filter((e) => e.type === 'agent_started')
+  expect(started.map((e) => e.message)).toEqual(['Agent StrixAgent started', 'Agent recon started'])
+  const log = await Bun.file(join(second.workDir, scan.id, 'strix.log')).text()
+  expect(log).toContain('no LLM configured')
+  expect(log).toContain('--- resumed ')
+})
+
+test('a resumed scan whose run files are gone fails without starting Strix', async () => {
+  const scan = await createScan()
+  await db
+    .update(schema.scan)
+    .set({ runName: 'example-com_ab12' })
+    .where(eq(schema.scan.id, scan.id))
+  const { workDir, removed, process } = await processor('completed')
+  await process(scan.id)
+  const done = (await load(scan.id))!
+  expect(done.status).toBe('failed')
+  expect(done.error).toBe("The scan's run files are gone, so it can't be resumed")
+  expect(removed).toEqual([scan.id])
+  expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)
 })

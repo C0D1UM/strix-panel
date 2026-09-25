@@ -1,7 +1,9 @@
 // Runs one scan: spawns `strix -n` in a directory of its own, polls the run files it writes, mirrors them into
-// Postgres, and forwards a stop request as a signal. The only place in the panel that starts Strix.
+// Postgres, and forwards a stop request as a signal. A scan that already has a run continues it with
+// `strix --resume`. The only place in the panel that starts Strix.
 import type { ScanJob } from '@strix-panel/db/queue'
 import { isFinishedScanStatus } from '@strix-panel/shared'
+import { createWriteStream } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createDockerSandboxes, removeSandboxes, SANDBOX_RUN_TYPE, type Sandboxes } from './sandbox'
@@ -40,7 +42,31 @@ export function createScanProcessor(options: ProcessorOptions) {
   async function run(scan: ScanRow): Promise<void> {
     const cwd = join(options.workDir, scan.id)
     await mkdir(cwd, { recursive: true })
-    const log = Bun.file(join(cwd, 'strix.log')).writer()
+
+    // Mutated from `tick`, so kept in an object: TS can't follow narrowing through the closure otherwise.
+    const state: { previous: RunState | null; runDir: string | null } = {
+      previous: null,
+      runDir: null,
+    }
+    if (scan.runName !== null) {
+      const runDir = join(cwd, 'strix_runs', scan.runName)
+      const previous = await readRunState(runDir)
+      if (!previous || !(await Bun.file(join(runDir, '.state', 'agents.json')).exists())) {
+        await store.setStatus(scan.id, 'failed', 'Scan failed', {
+          error: "The scan's run files are gone, so it can't be resumed",
+          finishedAt: new Date(),
+        })
+        return
+      }
+      // Catch up on whatever the last poll before the interruption missed, without replaying the feed.
+      await store.applyDiff(scan.id, { ...diffRunState(null, previous), events: [] })
+      state.previous = previous
+      state.runDir = runDir
+    }
+
+    // Appended, so a resumed scan keeps the output of its earlier attempts.
+    const log = createWriteStream(join(cwd, 'strix.log'), { flags: 'a' })
+    if (scan.runName !== null) log.write(`\n--- resumed ${new Date().toISOString()} ---\n`)
     const tail: string[] = []
 
     const proc = Bun.spawn(buildStrixArgs(options.strixBin, scan), {
@@ -68,11 +94,6 @@ export function createScanProcessor(options: ProcessorOptions) {
     }
     const output = Promise.all([capture(proc.stdout), capture(proc.stderr)])
 
-    // Mutated from `tick`, so kept in an object: TS can't follow narrowing through the closure otherwise.
-    const state: { previous: RunState | null; runDir: string | null } = {
-      previous: null,
-      runDir: null,
-    }
     let stopRequested = false
     let signalledAt: number | null = null
     let exited = false
@@ -113,7 +134,7 @@ export function createScanProcessor(options: ProcessorOptions) {
     const exitCode = await proc.exited
     // A grandchild holding the pipes open must not keep the scan in `running`.
     await Promise.race([output, sleep(OUTPUT_DRAIN_TIMEOUT_MS)])
-    await log.end()
+    await new Promise<void>((resolve) => log.end(resolve))
     try {
       await tick()
     } catch (error) {
@@ -143,7 +164,7 @@ export function createScanProcessor(options: ProcessorOptions) {
     if (scan.status === 'running' || scan.status === 'stopping') {
       // A redelivery: the worker that started this scan died with it, and the Strix process is gone.
       await store.setStatus(scan.id, 'failed', 'Scan failed', {
-        error: 'Worker restarted during the scan',
+        error: 'Worker restarted during the scan. Resume it to continue.',
         finishedAt: new Date(),
       })
       await removeSandboxes(sandboxes, scan.id)

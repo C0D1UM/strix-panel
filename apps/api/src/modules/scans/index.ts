@@ -18,7 +18,7 @@ import {
   listEvents,
   listFindings,
   listScans,
-  retryScan,
+  resumeScan,
   stopScan,
 } from './service'
 import { streamScan } from './stream'
@@ -112,9 +112,9 @@ export const scansModule = new Elysia({ name: 'scans', prefix: '/scans' })
     response: { 200: ScanResponse, 404: ErrorResponse, 409: ErrorResponse },
     detail: { tags, summary: 'Stop a queued or running scan' },
   })
-  .post('/:id/retry', ({ user, params }) => retryScan(user, params.id), {
+  .post('/:id/resume', ({ user, params }) => resumeScan(user, params.id), {
     requireAuth: true,
     params: ScanIdParams,
     response: { 200: ScanResponse, 404: ErrorResponse, 409: ErrorResponse },
-    detail: { tags, summary: 'Retry a scan that failed before Strix started' },
+    detail: { tags, summary: 'Resume a failed or stopped scan' },
   })

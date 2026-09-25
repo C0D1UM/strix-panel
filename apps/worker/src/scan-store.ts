@@ -57,11 +57,12 @@ export function createScanStore(db: Database) {
     await notifyScanUpdate(db, scanId)
   }
 
-  // queued → running, unless something (a stop) moved the scan on in the meantime.
+  // queued → running, unless something (a stop) moved the scan on in the meantime. A resumed scan keeps its
+  // original start time.
   async function start(scanId: string): Promise<boolean> {
     const started = await db
       .update(schema.scan)
-      .set({ status: 'running', startedAt: new Date() })
+      .set({ status: 'running', startedAt: sql`coalesce(${schema.scan.startedAt}, now())` })
       .where(and(eq(schema.scan.id, scanId), eq(schema.scan.status, 'queued')))
       .returning({ id: schema.scan.id })
     if (started.length === 0) return false

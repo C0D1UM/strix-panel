@@ -33,7 +33,7 @@ export function createScanQueue(connectionString: string) {
 export type ScanQueue = ReturnType<typeof createScanQueue>
 
 // One job per scan: the job id is the scan id, so a scan can't be enqueued twice. BullMQ never retries a scan;
-// a user retry frees the id with `releaseScanJob` and enqueues it again.
+// a resume frees the id with `releaseScanJob` and enqueues it again.
 export function enqueueScan(queue: ScanQueue, scanId: string) {
   return queue.add('scan', { scanId }, { jobId: scanId, attempts: 1 })
 }

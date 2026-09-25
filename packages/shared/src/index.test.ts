@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { isAllowedEmail, isFinishedScanStatus, normalizeScanTarget } from './index'
+import {
+  checkScanResume,
+  isAllowedEmail,
+  isFinishedScanStatus,
+  normalizeScanTarget,
+  type ResumableScan,
+} from './index'
 
 describe('isAllowedEmail', () => {
   test('allows everyone when no domains configured', () => {
@@ -35,5 +41,39 @@ describe('isFinishedScanStatus', () => {
   test('only completed, failed and stopped are finished', () => {
     expect(['completed', 'failed', 'stopped'].every(isFinishedScanStatus)).toBe(true)
     expect(['queued', 'running', 'stopping'].some(isFinishedScanStatus)).toBe(false)
+  })
+})
+
+describe('checkScanResume', () => {
+  const scan = (over: Partial<ResumableScan> = {}): ResumableScan => ({
+    status: 'failed',
+    runName: 'example-com_ab12',
+    agentCount: 2,
+    costUsd: 1,
+    maxBudgetUsd: 5,
+    ...over,
+  })
+
+  test('continues a failed or stopped run that saved agents', () => {
+    expect(checkScanResume(scan())).toEqual({ ok: true, mode: 'continue' })
+    expect(checkScanResume(scan({ status: 'stopped', maxBudgetUsd: null }))).toEqual({
+      ok: true,
+      mode: 'continue',
+    })
+  })
+
+  test('starts over when Strix never created a run', () => {
+    expect(checkScanResume(scan({ runName: null, agentCount: 0 }))).toEqual({
+      ok: true,
+      mode: 'fresh',
+    })
+  })
+
+  test('rejects live or completed scans, runs without agents and used-up budgets', () => {
+    for (const status of ['queued', 'running', 'stopping', 'completed'] as const) {
+      expect(checkScanResume(scan({ status }))).toMatchObject({ code: 'SCAN_NOT_RESUMABLE' })
+    }
+    expect(checkScanResume(scan({ agentCount: 0 }))).toMatchObject({ code: 'SCAN_NOT_RESUMABLE' })
+    expect(checkScanResume(scan({ costUsd: 5 }))).toMatchObject({ code: 'SCAN_BUDGET_EXHAUSTED' })
   })
 })
