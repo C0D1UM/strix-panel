@@ -28,14 +28,16 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # 1.2.3 and 1.2 (plus latest) for releases; only the full version for prereleases.
+      # 1.2.3, 1.2 and latest for releases; only the full version for prereleases.
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
       - uses: docker/build-push-action@v7
         with:
           context: .
