@@ -25,6 +25,9 @@ ARG STRIX_VERSION=
 RUN if [ -n "$STRIX_VERSION" ]; then spec="==$STRIX_VERSION"; else spec=">=1,<2"; fi \
     && uv tool install --python 3.12 "strix-agent$spec" \
     && strix --version
+# PDF reports use Strix's own renderer through this interpreter. Fail the build if that module is gone.
+ENV STRIX_PYTHON=/opt/uv/tools/strix-agent/bin/python
+RUN "$STRIX_PYTHON" -c "import strix.interface.viewer.report_pdf"
 
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/

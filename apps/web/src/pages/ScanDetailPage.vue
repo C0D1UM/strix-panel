@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { checkScanResume, FINDING_SEVERITIES, type ScanEventType } from '@strix-panel/shared'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import ReportDownloadMenu from '../components/ReportDownloadMenu.vue'
 import ScanAgentTree from '../components/ScanAgentTree.vue'
 import ScanStatusBadge from '../components/ScanStatusBadge.vue'
 import SeverityBadge from '../components/SeverityBadge.vue'
@@ -167,15 +168,13 @@ const codeLocations = (report: Record<string, unknown>): string[] => {
           </p>
         </div>
         <div class="flex items-center gap-2">
-          <a
-            v-if="scan.hasReport"
-            :href="`/api/v1/scans/${scan.id}/report.md`"
-            download
-            class="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-surface-raised px-4 text-sm font-semibold hover:bg-surface-sunken"
-          >
-            <span class="icon-[lucide--download] size-4" aria-hidden="true" />
-            Download report
-          </a>
+          <ReportDownloadMenu
+            v-if="scan.hasReport || scan.status === 'completed'"
+            :scan-id="scan.id"
+            :pdf="scan.status === 'completed'"
+            :markdown="scan.hasReport"
+            @error="actionError = $event"
+          />
           <AppButton v-if="canStop" variant="secondary" :loading="stopping" @click="stop">
             <span class="icon-[lucide--square] size-4" aria-hidden="true" />
             Stop scan

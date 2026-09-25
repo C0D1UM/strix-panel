@@ -1,9 +1,12 @@
 import { schema } from '@strix-panel/db'
 import { notifyScanUpdate } from '@strix-panel/db/notify'
+import { createReportWorker } from '@strix-panel/db/queue'
+import { reportPdfPath } from '@strix-panel/shared/env'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { db } from '../src/lib/db'
-import { scanQueue } from '../src/lib/queue'
+import { env } from '../src/lib/env'
+import { reportQueue, scanQueue } from '../src/lib/queue'
 import { request, signUp } from './helpers'
 
 let admin: string
@@ -13,6 +16,7 @@ let bob: string
 beforeEach(async () => {
   await db.delete(schema.user)
   await scanQueue.obliterate({ force: true })
+  await reportQueue.obliterate({ force: true })
   admin = (await signUp('admin@example.com')).cookie
   alice = (await signUp('alice@example.com')).cookie
   bob = (await signUp('bob@example.com')).cookie
@@ -192,6 +196,77 @@ describe('events, findings and report', () => {
       `attachment; filename="strix-report-${scan.id}.md"`,
     )
     expect(await res.text()).toBe('# Report\n')
+  })
+})
+
+describe('PDF report', () => {
+  const pdfStatus = (id: string, cookie: string, method = 'GET') =>
+    request(`/api/v1/scans/${id}/report-pdf`, { method, headers: { cookie } })
+
+  test('only a completed scan has one, and only its viewers see it', async () => {
+    const { scan } = await create(alice)
+    const running = await pdfStatus(scan.id, alice, 'POST')
+    expect(running.status).toBe(409)
+    expect(await errorCode(running)).toBe('REPORT_NOT_AVAILABLE')
+
+    await setStatus(scan.id, 'completed')
+    expect((await pdfStatus(scan.id, bob, 'POST')).status).toBe(404)
+    expect((await pdfStatus(scan.id, admin)).status).toBe(200)
+  })
+
+  test('a request queues one render, and the PDF downloads once the worker wrote it', async () => {
+    const { scan } = await create(alice)
+    await setStatus(scan.id, 'completed')
+
+    expect(await (await pdfStatus(scan.id, alice)).json()).toEqual({ state: 'none', error: null })
+    const started = await pdfStatus(scan.id, alice, 'POST')
+    expect(await started.json()).toEqual({ state: 'pending', error: null })
+    expect((await reportQueue.getJob(scan.id))?.data).toEqual({ scanId: scan.id })
+    expect(await (await pdfStatus(scan.id, alice, 'POST')).json()).toEqual({
+      state: 'pending',
+      error: null,
+    })
+    expect(await reportQueue.getJobCounts()).toMatchObject({ waiting: 1 })
+
+    const notYet = await request(`/api/v1/scans/${scan.id}/report.pdf`, {
+      headers: { cookie: alice },
+    })
+    expect(notYet.status).toBe(404)
+
+    await Bun.write(reportPdfPath(env.REPORT_DIR, scan.id), '%PDF-1.4 fake')
+    expect(await (await pdfStatus(scan.id, alice)).json()).toEqual({ state: 'ready', error: null })
+    const res = await request(`/api/v1/scans/${scan.id}/report.pdf`, {
+      headers: { cookie: alice },
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/pdf')
+    expect(res.headers.get('content-disposition')).toBe(
+      `attachment; filename="strix-report-${scan.id}.pdf"`,
+    )
+    expect(await res.text()).toBe('%PDF-1.4 fake')
+  })
+
+  test('a failed render reports why, and the next request retries it', async () => {
+    const { scan } = await create(alice)
+    await setStatus(scan.id, 'completed')
+    const failed = Promise.withResolvers<void>()
+    const worker = createReportWorker(env.DATABASE_URL, async () => {
+      throw new Error('Rendering the PDF failed: boom')
+    })
+    worker.on('failed', () => failed.resolve())
+    await pdfStatus(scan.id, alice, 'POST')
+    await failed.promise
+    await worker.close()
+
+    expect(await (await pdfStatus(scan.id, alice)).json()).toEqual({
+      state: 'failed',
+      error: 'Rendering the PDF failed: boom',
+    })
+    expect(await (await pdfStatus(scan.id, alice, 'POST')).json()).toEqual({
+      state: 'pending',
+      error: null,
+    })
+    expect(await (await reportQueue.getJob(scan.id))?.getState()).toBe('waiting')
   })
 })
 

@@ -5,6 +5,7 @@ import {
   ErrorResponse,
   ListEventsQuery,
   ListScansQuery,
+  ReportPdfResponse,
   ScanEventResponse,
   ScanFindingResponse,
   ScanIdParams,
@@ -14,10 +15,13 @@ import {
 import {
   createScan,
   getReport,
+  getReportPdf,
+  getReportPdfStatus,
   getScan,
   listEvents,
   listFindings,
   listScans,
+  requestReportPdf,
   resumeScan,
   stopScan,
 } from './service'
@@ -81,6 +85,43 @@ export const scansModule = new Elysia({ name: 'scans', prefix: '/scans' })
       params: ScanIdParams,
       response: { 200: t.String({ description: 'Markdown' }), 404: ErrorResponse },
       detail: { tags, summary: 'Download the whole-scan report' },
+    },
+  )
+  .post('/:id/report-pdf', ({ user, params }) => requestReportPdf(user, params.id), {
+    requireAuth: true,
+    params: ScanIdParams,
+    response: { 200: ReportPdfResponse, 404: ErrorResponse, 409: ErrorResponse },
+    detail: {
+      tags,
+      summary: 'Start rendering the PDF report (completed scans); poll GET until it is ready',
+    },
+  })
+  .get('/:id/report-pdf', ({ user, params }) => getReportPdfStatus(user, params.id), {
+    requireAuth: true,
+    params: ScanIdParams,
+    response: { 200: ReportPdfResponse, 404: ErrorResponse, 409: ErrorResponse },
+    detail: { tags, summary: 'Whether the PDF report is ready' },
+  })
+  .get(
+    '/:id/report.pdf',
+    async ({ user, params }) => {
+      const file = await getReportPdf(user, params.id)
+      return new Response(file, {
+        headers: {
+          'content-type': 'application/pdf',
+          'content-disposition': `attachment; filename="strix-report-${params.id}.pdf"`,
+        },
+      })
+    },
+    {
+      requireAuth: true,
+      params: ScanIdParams,
+      response: {
+        200: t.String({ format: 'binary', description: 'PDF' }),
+        404: ErrorResponse,
+        409: ErrorResponse,
+      },
+      detail: { tags, summary: 'Download the PDF report once it is ready' },
     },
   )
   .get(

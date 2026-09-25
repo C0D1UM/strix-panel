@@ -1,7 +1,8 @@
 import { createDb } from '@strix-panel/db'
-import { createScanWorker } from '@strix-panel/db/queue'
+import { createReportWorker, createScanWorker } from '@strix-panel/db/queue'
 import { env } from './env'
 import { createScanProcessor, markFailed } from './processor'
+import { createReportProcessor } from './report'
 import { createDockerSandboxes, sweepSandboxes } from './sandbox'
 import { createScanStore } from './scan-store'
 
@@ -24,8 +25,26 @@ worker.on('failed', (job, error) => {
   if (job) void markFailed(store, job.data.scanId, error.message).catch(() => {})
 })
 worker.on('error', (error) => console.error(`[worker] error: ${error.message}`))
-await worker.waitUntilReady()
+
+// PDF reports get their own consumer, so a render never waits behind a running scan.
+const reportWorker = createReportWorker(
+  env.DATABASE_URL,
+  createReportProcessor({
+    store,
+    workDir: env.STRIX_WORK_DIR,
+    reportDir: env.REPORT_DIR,
+    python: env.STRIX_PYTHON,
+  }),
+  { concurrency: 2 },
+)
+reportWorker.on('failed', (job, error) =>
+  console.error(`[worker] report ${job?.id} failed: ${error.message}`),
+)
+reportWorker.on('error', (error) => console.error(`[worker] report error: ${error.message}`))
+
+await Promise.all([worker.waitUntilReady(), reportWorker.waitUntilReady()])
 console.log('[worker] ready')
+if (!env.STRIX_PYTHON) console.log('[worker] STRIX_PYTHON is empty: PDF reports are off')
 
 // Containers of scans that ended while no worker was around to clean up (a crash, a SIGKILL).
 void sweepSandboxes(sandboxes, store.status)
@@ -47,7 +66,7 @@ console.log(`[worker] health on http://localhost:${health.port}`)
 async function shutdown() {
   console.log('[worker] shutting down')
   await health.stop()
-  await worker.close()
+  await Promise.all([worker.close(), reportWorker.close()])
   await pool.end()
   process.exit(0)
 }
