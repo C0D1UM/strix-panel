@@ -1,6 +1,8 @@
 import { effectScope } from 'vue'
+import { flushPromises } from '@vue/test-utils'
 import { expect, test } from 'vitest'
 import { useScanStream } from '../src/composables/useScanStream'
+import type { Scan, ScanEvent } from '../src/lib/scans'
 
 class FakeEventSource {
   static CLOSED = 2
@@ -37,14 +39,25 @@ const event = (id: string, type = 'status') => ({
   createdAt: '2026-09-24T10:00:00Z',
 })
 
-function setup() {
+type Initial = { scan: Scan; events: ScanEvent[] } | null
+
+function setup(initial: Promise<Initial> | (() => Promise<Initial>) = new Promise(() => {})) {
   FakeEventSource.instances = []
   const scope = effectScope()
   const stream = scope.run(() =>
-    useScanStream('s1', { eventSource: FakeEventSource as unknown as typeof EventSource }),
+    useScanStream('s1', {
+      eventSource: FakeEventSource as unknown as typeof EventSource,
+      loadInitial: typeof initial === 'function' ? initial : () => initial,
+    }),
   )!
   return { scope, stream, source: FakeEventSource.instances[0]! }
 }
+
+const initialOf = (status: string, eventIds: string[]) =>
+  Promise.resolve({
+    scan: scan(status) as unknown as Scan,
+    events: eventIds.map((id) => event(id)) as unknown as ScanEvent[],
+  })
 
 test('connects to the scan stream and applies the snapshot', () => {
   const { stream, source } = setup()
@@ -130,4 +143,50 @@ test('reconnect resolves when the new stream fails', async () => {
   next.emit('error')
   await done
   expect(stream.connected.value).toBe(false)
+})
+
+test('the page is filled from the initial fetch before the stream snapshot arrives', async () => {
+  const { stream, source } = setup(initialOf('running', ['e1']))
+  await flushPromises()
+  expect(stream.scan.value?.status).toBe('running')
+  expect(stream.events.value.map((e) => e.id)).toEqual(['e1'])
+  expect(source.closed).toBe(false)
+  source.emit('snapshot', { scan: scan('running'), events: [event('e1'), event('e2')] })
+  expect(stream.events.value.map((e) => e.id)).toEqual(['e1', 'e2'])
+})
+
+test('the initial fetch is ignored once the snapshot has arrived', async () => {
+  let resolve!: (value: Initial) => void
+  const { stream, source } = setup(new Promise<Initial>((r) => (resolve = r)))
+  source.emit('snapshot', { scan: scan('running'), events: [event('e1')] })
+  source.emit('scan', scan('completed'))
+  resolve(await initialOf('running', ['e0']))
+  await flushPromises()
+  expect(stream.scan.value?.status).toBe('completed')
+  expect(stream.events.value.map((e) => e.id)).toEqual(['e1'])
+})
+
+test('a finished scan from the initial fetch closes the stream', async () => {
+  const { stream, source } = setup(initialOf('completed', ['e1']))
+  await flushPromises()
+  expect(stream.scan.value?.status).toBe('completed')
+  expect(source.closed).toBe(true)
+})
+
+test('a failed initial fetch leaves the stream to report', async () => {
+  const { stream, source } = setup(Promise.resolve(null))
+  await flushPromises()
+  expect(stream.scan.value).toBeNull()
+  expect(stream.error.value).toBeNull()
+  expect(source.closed).toBe(false)
+})
+
+test('reconnect resolves on the initial fetch when it beats the snapshot', async () => {
+  const loads = [new Promise<Initial>(() => {}), initialOf('queued', ['e1', 'e2'])]
+  const { stream, source } = setup(() => loads.shift()!)
+  source.emit('snapshot', { scan: scan('failed'), events: [event('e1')] })
+  await stream.reconnect()
+  expect(stream.scan.value?.status).toBe('queued')
+  expect(stream.events.value.map((e) => e.id)).toEqual(['e1', 'e2'])
+  expect(FakeEventSource.instances[1]!.closed).toBe(false)
 })

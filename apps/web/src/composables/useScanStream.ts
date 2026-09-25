@@ -1,14 +1,25 @@
 import { isFinishedScanStatus } from '@strix-panel/shared'
 import { getCurrentScope, onScopeDispose, ref } from 'vue'
+import { api } from '../lib/api'
 import type { Scan, ScanEvent } from '../lib/scans'
 
 export interface ScanStreamOptions {
   // Injectable for tests. Native EventSource reconnects on its own and resends Last-Event-ID.
   eventSource?: typeof EventSource
+  // Injectable for tests. Resolves to null when the scan can't be read; the stream then reports why.
+  loadInitial?: (scanId: string) => Promise<{ scan: Scan; events: ScanEvent[] } | null>
+}
+
+async function fetchInitial(scanId: string) {
+  const routes = api.v1.scans({ id: scanId })
+  const [scan, events] = await Promise.all([routes.get(), routes.events.get()])
+  return scan.data && events.data ? { scan: scan.data, events: events.data } : null
 }
 
 // Live view of one scan over SSE: a snapshot first, then `scan`, `event` and `findings` messages.
 // This is the one place the web app talks to the API without Eden: Eden has no SSE client.
+// A proxy in front (e.g. Cloudflare) can hold back the first SSE message for seconds, so each connection
+// also fetches the scan with plain GETs; whichever arrives first wins, and the stream takes over from there.
 export function useScanStream(scanId: string, options: ScanStreamOptions = {}) {
   const scan = ref<Scan | null>(null)
   const events = ref<ScanEvent[]>([])
@@ -50,6 +61,7 @@ export function useScanStream(scanId: string, options: ScanStreamOptions = {}) {
   const connect = () => {
     const current = new ES(`/api/v1/scans/${scanId}/stream`)
     source = current
+    let snapshotReceived = false
 
     current.addEventListener('open', () => {
       connected.value = true
@@ -60,6 +72,7 @@ export function useScanStream(scanId: string, options: ScanStreamOptions = {}) {
         scan: Scan
         events: ScanEvent[]
       }
+      snapshotReceived = true
       append(data.events)
       applyScan(data.scan)
       settle()
@@ -84,6 +97,17 @@ export function useScanStream(scanId: string, options: ScanStreamOptions = {}) {
           : 'Scan not found'
       }
     })
+
+    void (options.loadInitial ?? fetchInitial)(scanId)
+      .then((initial) => {
+        if (!initial || snapshotReceived || current !== source) return
+        if (current.readyState === ES.CLOSED) return
+        append(initial.events)
+        applyScan(initial.scan)
+        settle()
+      })
+      // The stream still delivers the snapshot.
+      .catch(() => {})
   }
 
   // Opens a fresh connection, e.g. after a finished scan was resumed. Resolves on the new snapshot.
