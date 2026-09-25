@@ -11,11 +11,14 @@ import {
   checkScanResume,
   MAX_SCAN_TARGETS,
   normalizeScanTarget,
+  SCAN_TAB_STATUSES,
+  SCAN_TABS,
   type ScanMode,
   type ScanStatus,
+  type ScanTab,
 } from '@strix-panel/shared'
 import { reportPdfPath } from '@strix-panel/shared/env'
-import { and, asc, count, desc, eq, gt, sql, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm'
 import type { AuthUser } from '../../lib/auth'
 import { db } from '../../lib/db'
 import { env } from '../../lib/env'
@@ -142,24 +145,63 @@ export async function getScan(viewer: Viewer, id: string): Promise<ScanDto> {
   return toScanDto(row.scan, row.owner)
 }
 
-export async function listScans(viewer: Viewer, page: number, pageSize: number) {
-  const where = visibleTo(viewer)
-  const [rows, [total]] = await Promise.all([
+export interface ListScansFilters {
+  page: number
+  pageSize: number
+  q?: string
+  tab?: ScanTab
+  ownerId?: string
+}
+
+// ILIKE treats % and _ as wildcards and a backslash as their escape.
+const likePattern = (text: string) => `%${text.replace(/[\\%_]/g, '\\$&')}%`
+
+function searchScans(q: string | undefined): SQL | undefined {
+  const text = q?.trim()
+  if (!text) return undefined
+  const pattern = likePattern(text)
+  return sql`(${schema.scan.name} ilike ${pattern} or exists (select 1 from unnest(${schema.scan.targets}) as target where target ilike ${pattern}))`
+}
+
+export async function listScans(viewer: Viewer, filters: ListScansFilters) {
+  const { page, pageSize, tab = 'all' } = filters
+  const where = and(
+    visibleTo(viewer),
+    viewer.role === 'admin' && filters.ownerId
+      ? eq(schema.scan.userId, filters.ownerId)
+      : undefined,
+    searchScans(filters.q),
+  )
+  const [rows, byStatus] = await Promise.all([
     db
       .select({ scan: schema.scan, owner })
       .from(schema.scan)
       .innerJoin(schema.user, eq(schema.user.id, schema.scan.userId))
-      .where(where)
+      .where(
+        and(where, tab === 'all' ? undefined : inArray(schema.scan.status, SCAN_TAB_STATUSES[tab])),
+      )
       .orderBy(desc(schema.scan.id))
       .limit(pageSize)
       .offset((page - 1) * pageSize),
-    db.select({ value: count() }).from(schema.scan).where(where),
+    db
+      .select({ status: schema.scan.status, value: count() })
+      .from(schema.scan)
+      .where(where)
+      .groupBy(schema.scan.status),
   ])
+  const counts = Object.fromEntries(SCAN_TABS.map((t) => [t, 0])) as Record<ScanTab, number>
+  for (const { status, value } of byStatus) {
+    counts.all += value
+    for (const [t, statuses] of Object.entries(SCAN_TAB_STATUSES)) {
+      if (statuses.includes(status)) counts[t as ScanTab] += value
+    }
+  }
   return {
     items: rows.map((row) => toScanDto(row.scan, row.owner)),
     page,
     pageSize,
-    total: total?.value ?? 0,
+    total: counts[tab],
+    counts,
   }
 }
 

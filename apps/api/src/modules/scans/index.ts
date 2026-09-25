@@ -45,12 +45,17 @@ export const scansModule = new Elysia({ name: 'scans', prefix: '/scans' })
       detail: { tags, summary: 'Create a scan and start it' },
     },
   )
-  .get('/', ({ user, query }) => listScans(user, query.page ?? 1, query.pageSize ?? 20), {
-    requireAuth: true,
-    query: ListScansQuery,
-    response: ScanListResponse,
-    detail: { tags, summary: 'List scans, newest first' },
-  })
+  .get(
+    '/',
+    ({ user, query }) =>
+      listScans(user, { ...query, page: query.page ?? 1, pageSize: query.pageSize ?? 20 }),
+    {
+      requireAuth: true,
+      query: ListScansQuery,
+      response: ScanListResponse,
+      detail: { tags, summary: 'List scans, newest first, with search and status tabs' },
+    },
+  )
   .get('/:id', ({ user, params }) => getScan(user, params.id), {
     requireAuth: true,
     params: ScanIdParams,

@@ -6,6 +6,7 @@ import {
   SCAN_EVENT_TYPES,
   SCAN_MODES,
   SCAN_STATUSES,
+  SCAN_TABS,
 } from '@strix-panel/shared'
 import { t } from 'elysia'
 
@@ -73,13 +74,31 @@ export const ScanIdParams = t.Object({ id: t.String({ format: 'uuid' }) })
 export const ListScansQuery = t.Object({
   page: t.Optional(t.Integer({ minimum: 1, default: 1 })),
   pageSize: t.Optional(t.Integer({ minimum: 1, maximum: 100, default: 20 })),
+  q: t.Optional(
+    t.String({ maxLength: 200, description: 'Matches the scan name or any target, any case' }),
+  ),
+  // A Union of Literals, not UnionEnum: an optional UnionEnum query param defaults to its first value.
+  tab: t.Optional(t.Union(SCAN_TABS.map((tab) => t.Literal(tab)))),
+  ownerId: t.Optional(
+    t.String({ format: 'uuid', description: 'Admins only; ignored for other users' }),
+  ),
 })
 
 export const ScanListResponse = t.Object({
   items: t.Array(ScanResponse),
   page: t.Integer(),
   pageSize: t.Integer(),
-  total: t.Integer(),
+  total: t.Integer({ description: 'Scans in the selected tab' }),
+  counts: t.Object(
+    {
+      all: t.Integer(),
+      active: t.Integer(),
+      completed: t.Integer(),
+      failed: t.Integer(),
+      stopped: t.Integer(),
+    },
+    { description: 'Scans per tab, with the search and owner filters applied' },
+  ),
 })
 
 export const ListEventsQuery = t.Object({ after: t.Optional(t.String({ format: 'uuid' })) })

@@ -54,6 +54,17 @@ export function isFinishedScanStatus(status: string): boolean {
   return (FINISHED_SCAN_STATUSES as readonly string[]).includes(status)
 }
 
+// Status groups for filtering the scan list. `all` has no status filter.
+export const SCAN_TABS = ['all', 'active', 'completed', 'failed', 'stopped'] as const
+export type ScanTab = (typeof SCAN_TABS)[number]
+
+export const SCAN_TAB_STATUSES: Record<Exclude<ScanTab, 'all'>, readonly ScanStatus[]> = {
+  active: ['queued', 'running', 'stopping'],
+  completed: ['completed'],
+  failed: ['failed'],
+  stopped: ['stopped'],
+}
+
 export const SCAN_EVENT_TYPES = [
   'status',
   'agent_started',

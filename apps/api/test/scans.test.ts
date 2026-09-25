@@ -126,6 +126,77 @@ describe('visibility', () => {
   })
 })
 
+describe('GET /api/v1/scans filters', () => {
+  type List = {
+    items: { id: string }[]
+    total: number
+    counts: Record<'all' | 'active' | 'completed' | 'failed' | 'stopped', number>
+  }
+  const list = async (cookie: string, query: string) => {
+    const res = await request(`/api/v1/scans?${query}`, { headers: { cookie } })
+    expect(res.status).toBe(200)
+    return (await res.json()) as List
+  }
+  const ids = (l: List) => l.items.map((s) => s.id).sort()
+  const statusOf = (id: string, status: 'running' | 'stopping' | 'failed' | 'stopped') =>
+    db.update(schema.scan).set({ status }).where(eq(schema.scan.id, id))
+
+  test('search matches name or any target, case-insensitively, and escapes wildcards', async () => {
+    const shop = await create(alice, { name: 'Shop API' })
+    const blog = await create(alice, { targets: ['https://a.example', 'https://Blog.example'] })
+    const pct = await create(alice, { name: '100% coverage' })
+
+    expect(ids(await list(alice, 'q=shop'))).toEqual([shop.scan.id])
+    expect(ids(await list(alice, 'q=BLOG.'))).toEqual([blog.scan.id])
+    expect(ids(await list(alice, 'q=%25'))).toEqual([pct.scan.id])
+    expect(ids(await list(alice, 'q=_'))).toEqual([])
+    expect((await list(alice, 'q=%20%20')).total).toBe(3)
+  })
+
+  test('tabs group statuses and counts ignore the tab but respect search', async () => {
+    const queued = await create(alice, { name: 'one' })
+    const running = await create(alice, { name: 'two' })
+    const stopping = await create(alice, { name: 'three' })
+    const done = await create(alice, { name: 'four' })
+    const failed = await create(alice, { name: 'five' })
+    const stopped = await create(alice, { name: 'six' })
+    await statusOf(running.scan.id, 'running')
+    await statusOf(stopping.scan.id, 'stopping')
+    await setStatus(done.scan.id, 'completed')
+    await statusOf(failed.scan.id, 'failed')
+    await statusOf(stopped.scan.id, 'stopped')
+
+    const active = await list(alice, 'tab=active')
+    expect(ids(active)).toEqual([queued.scan.id, running.scan.id, stopping.scan.id].sort())
+    expect(active.total).toBe(3)
+    expect(active.counts).toEqual({ all: 6, active: 3, completed: 1, failed: 1, stopped: 1 })
+    expect(ids(await list(alice, 'tab=completed'))).toEqual([done.scan.id])
+    expect(ids(await list(alice, 'tab=failed'))).toEqual([failed.scan.id])
+    expect(ids(await list(alice, 'tab=stopped'))).toEqual([stopped.scan.id])
+    expect((await list(alice, '')).total).toBe(6)
+
+    const searched = await list(alice, 'q=f&tab=completed')
+    expect(searched.counts).toEqual({ all: 2, active: 0, completed: 1, failed: 1, stopped: 0 })
+
+    const bad = await request('/api/v1/scans?tab=queued', { headers: { cookie: alice } })
+    expect(bad.status).toBe(422)
+  })
+
+  test('admins filter by owner; users cannot widen or change their scope with it', async () => {
+    const mine = await create(alice)
+    const theirs = await create(bob)
+    const bobId = (
+      await db.select().from(schema.user).where(eq(schema.user.email, 'bob@example.com'))
+    )[0]!.id
+
+    const asAdmin = await list(admin, `ownerId=${bobId}`)
+    expect(ids(asAdmin)).toEqual([theirs.scan.id])
+    expect(asAdmin.counts.all).toBe(1)
+
+    expect(ids(await list(alice, `ownerId=${bobId}`))).toEqual([mine.scan.id])
+  })
+})
+
 describe('events, findings and report', () => {
   test('events come back oldest first and support ?after', async () => {
     const { scan } = await create(alice)
