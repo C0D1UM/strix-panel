@@ -223,41 +223,72 @@ describe('POST /api/v1/scans/:id/stop', () => {
   })
 })
 
-describe('POST /api/v1/scans/:id/retry', () => {
-  const retry = (id: string, cookie: string) =>
-    request(`/api/v1/scans/${id}/retry`, { method: 'POST', headers: { cookie } })
-  const fail = (id: string, runName: string | null = null) =>
+describe('POST /api/v1/scans/:id/resume', () => {
+  const resume = (id: string, cookie: string) =>
+    request(`/api/v1/scans/${id}/resume`, { method: 'POST', headers: { cookie } })
+  const end = (id: string, over: Partial<typeof schema.scan.$inferInsert> = {}) =>
     db
       .update(schema.scan)
-      .set({ status: 'failed', runName, error: 'boom', finishedAt: new Date() })
+      .set({ status: 'failed', error: 'boom', finishedAt: new Date(), ...over })
       .where(eq(schema.scan.id, id))
+  const agents = [
+    { id: 'root', name: 'StrixAgent', parentId: null, status: 'running', error: null },
+  ]
+  const messages = async (id: string) =>
+    (await db.select().from(schema.scanEvent).where(eq(schema.scanEvent.scanId, id))).map(
+      (e) => e.message,
+    )
 
   test('a scan that failed before Strix started is queued again with a fresh job', async () => {
     const { scan } = await create(alice)
-    await fail(scan.id)
-    const res = await retry(scan.id, admin)
+    await end(scan.id)
+    const res = await resume(scan.id, admin)
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ status: 'queued', error: null, finishedAt: null })
     expect((await scanQueue.getJob(scan.id))?.data).toEqual({ scanId: scan.id })
-    const events = await db
-      .select()
-      .from(schema.scanEvent)
-      .where(eq(schema.scanEvent.scanId, scan.id))
-    expect(events.map((e) => e.message)).toContain('Scan retried')
+    expect(await messages(scan.id)).toContain('Scan resumed')
   })
 
-  test('scans that ran Strix, or did not fail, conflict; others get 404', async () => {
-    const { scan } = await create(alice)
-    const queued = await retry(scan.id, alice)
+  test('a failed or stopped run with saved agents keeps its run, usage and start time', async () => {
+    const { scan } = await create(alice, { maxBudgetUsd: 5 })
+    const startedAt = new Date('2026-09-01T00:00:00Z')
+    await end(scan.id, { runName: 'example-com_a1b2', agents, costUsd: 1.5, startedAt })
+    const res = await resume(scan.id, alice)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      status: 'queued',
+      runName: 'example-com_a1b2',
+      costUsd: 1.5,
+      error: null,
+      finishedAt: null,
+      startedAt: startedAt.toISOString(),
+    })
+
+    const { scan: stopped } = await create(alice)
+    await end(stopped.id, { status: 'stopped', error: null, runName: 'x_1', agents })
+    expect((await resume(stopped.id, alice)).status).toBe(200)
+  })
+
+  test('live, completed, snapshot-less and over-budget scans conflict; others get 404', async () => {
+    const { scan } = await create(alice, { maxBudgetUsd: 2 })
+    const queued = await resume(scan.id, alice)
     expect(queued.status).toBe(409)
-    expect(await errorCode(queued)).toBe('SCAN_NOT_RETRYABLE')
+    expect(await errorCode(queued)).toBe('SCAN_NOT_RESUMABLE')
 
-    await fail(scan.id, 'example-com_a1b2')
-    const ran = await retry(scan.id, alice)
-    expect(ran.status).toBe(409)
-    expect(await errorCode(ran)).toBe('SCAN_NOT_RETRYABLE')
+    await setStatus(scan.id, 'completed')
+    expect(await errorCode(await resume(scan.id, alice))).toBe('SCAN_NOT_RESUMABLE')
 
-    expect((await retry(scan.id, bob)).status).toBe(404)
+    await end(scan.id, { runName: 'example-com_a1b2' })
+    const empty = await resume(scan.id, alice)
+    expect(empty.status).toBe(409)
+    expect(await errorCode(empty)).toBe('SCAN_NOT_RESUMABLE')
+
+    await end(scan.id, { runName: 'example-com_a1b2', agents, costUsd: 2 })
+    const broke = await resume(scan.id, alice)
+    expect(broke.status).toBe(409)
+    expect(await errorCode(broke)).toBe('SCAN_BUDGET_EXHAUSTED')
+
+    expect((await resume(scan.id, bob)).status).toBe(404)
   })
 })
 

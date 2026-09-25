@@ -62,3 +62,39 @@ export function normalizeScanTarget(value: string): string | null {
   if (!url.hostname) return null
   return url.toString()
 }
+
+export interface ResumableScan {
+  status: ScanStatus
+  runName: string | null
+  agentCount: number
+  costUsd: number
+  maxBudgetUsd: number | null
+}
+
+export type ScanResumeCheck =
+  | { ok: true; mode: 'fresh' | 'continue' }
+  | { ok: false; code: 'SCAN_NOT_RESUMABLE' | 'SCAN_BUDGET_EXHAUSTED'; message: string }
+
+// Whether a scan can be resumed, and how. A scan that ended before Strix created its run starts over (`fresh`);
+// one with a run and a saved agent snapshot continues it with `strix --resume` (`continue`).
+export function checkScanResume(scan: ResumableScan): ScanResumeCheck {
+  if (scan.status !== 'failed' && scan.status !== 'stopped') {
+    return {
+      ok: false,
+      code: 'SCAN_NOT_RESUMABLE',
+      message: `Scan is ${scan.status} and cannot be resumed`,
+    }
+  }
+  if (scan.runName === null) return { ok: true, mode: 'fresh' }
+  if (scan.agentCount === 0) {
+    return {
+      ok: false,
+      code: 'SCAN_NOT_RESUMABLE',
+      message: 'The scan ended before Strix saved any progress, so there is nothing to resume',
+    }
+  }
+  if (scan.maxBudgetUsd !== null && scan.costUsd >= scan.maxBudgetUsd) {
+    return { ok: false, code: 'SCAN_BUDGET_EXHAUSTED', message: 'The budget cap is used up' }
+  }
+  return { ok: true, mode: 'continue' }
+}

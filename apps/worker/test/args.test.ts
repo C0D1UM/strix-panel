@@ -8,6 +8,7 @@ test('builds a non-interactive argv with every option', () => {
       scanMode: 'quick',
       instruction: 'Focus on IDOR; ignore $(rm -rf /)',
       maxBudgetUsd: 12.5,
+      runName: null,
     }),
   ).toEqual([
     'strix',
@@ -32,6 +33,19 @@ test('omits instruction and budget when unset', () => {
       scanMode: 'deep',
       instruction: null,
       maxBudgetUsd: null,
+      runName: null,
     }),
   ).toEqual(['/opt/strix', '-n', '-t', 'https://a.example/', '-m', 'deep'])
+})
+
+test('continues an existing run with only the budget', () => {
+  expect(
+    buildStrixArgs('strix', {
+      targets: ['https://a.example/'],
+      scanMode: 'quick',
+      instruction: 'Focus on IDOR',
+      maxBudgetUsd: 5,
+      runName: 'a-example_ab12',
+    }),
+  ).toEqual(['strix', '-n', '--resume', 'a-example_ab12', '--max-budget', '5'])
 })
