@@ -24,6 +24,8 @@ const schema = Type.Object({
   AUTH_EMAIL_PASSWORD_ENABLED: Type.Boolean(),
   // false blocks every new account (email sign-up and first-time Google sign-in); existing users still sign in.
   AUTH_REGISTRATION_ENABLED: Type.Boolean({ default: true }),
+  // false: new users start pending and cannot start scans until an admin approves them. Existing users are unaffected.
+  AUTH_AUTO_APPROVE_USERS: Type.Boolean({ default: true }),
   // Comma-separated. Empty means any email may sign in.
   ALLOWED_EMAIL_DOMAINS: Type.String({ default: '' }),
   // PDF reports rendered by the worker. Must be the same directory as the worker's REPORT_DIR.

@@ -19,12 +19,13 @@ import { and, asc, count, desc, eq, gt, sql, type SQL } from 'drizzle-orm'
 import type { AuthUser } from '../../lib/auth'
 import { db } from '../../lib/db'
 import { env } from '../../lib/env'
-import { BadRequestError, ConflictError, NotFoundError } from '../../lib/errors'
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors'
 import { reportQueue, scanQueue } from '../../lib/queue'
 
 type Viewer = Pick<AuthUser, 'id' | 'role'>
+type Scanner = Pick<AuthUser, 'id' | 'role' | 'approvedAt'>
 type ScanRow = typeof schema.scan.$inferSelect
-type OwnerRow = { id: string; name: string; email: string }
+type OwnerRow = { id: string; name: string; email: string; removed: boolean }
 
 export interface CreateScanInput {
   name?: string
@@ -34,7 +35,18 @@ export interface CreateScanInput {
   maxBudgetUsd?: number
 }
 
-const owner = { id: schema.user.id, name: schema.user.name, email: schema.user.email }
+const owner = {
+  id: schema.user.id,
+  name: schema.user.name,
+  email: schema.user.email,
+  removed: sql<boolean>`${schema.user.deletedAt} is not null`,
+}
+
+function assertApproved(viewer: Scanner) {
+  if (!viewer.approvedAt) {
+    throw new ForbiddenError('Your account is waiting for admin approval', 'PENDING_APPROVAL')
+  }
+}
 
 export function toScanDto(row: ScanRow, ownerRow: OwnerRow) {
   return {
@@ -99,7 +111,8 @@ export function parseTargets(targets: string[]): string[] {
   return unique
 }
 
-export async function createScan(viewer: Viewer, input: CreateScanInput): Promise<ScanDto> {
+export async function createScan(viewer: Scanner, input: CreateScanInput): Promise<ScanDto> {
+  assertApproved(viewer)
   const targets = parseTargets(input.targets)
   const [row] = await db
     .insert(schema.scan)
@@ -271,7 +284,8 @@ export async function stopScan(viewer: Viewer, id: string): Promise<ScanDto> {
 
 // Queues a failed or stopped scan again. The worker continues its Strix run with `--resume`, or starts over when
 // Strix never created one. Usage, findings and the original start time carry over.
-export async function resumeScan(viewer: Viewer, id: string): Promise<ScanDto> {
+export async function resumeScan(viewer: Scanner, id: string): Promise<ScanDto> {
+  assertApproved(viewer)
   const { scan } = await findScan(viewer, id)
   const check = checkScanResume({ ...scan, agentCount: scan.agents.length })
   if (!check.ok) throw new ConflictError(check.code, check.message)

@@ -30,6 +30,8 @@ const page = computed(() => {
 })
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
+const pending = computed(() => currentUser.value?.approved === false)
+const pendingHint = computed(() => (pending.value ? 'Waiting for admin approval' : undefined))
 
 async function load() {
   clearTimeout(timer)
@@ -67,7 +69,7 @@ onBeforeUnmount(() => clearTimeout(timer))
           {{ isAdmin ? 'Every scan on this panel.' : 'Your Strix scans.' }}
         </p>
       </div>
-      <AppButton @click="dialogOpen = true">
+      <AppButton :disabled="pending" :title="pendingHint" @click="dialogOpen = true">
         <span class="icon-[lucide--plus] size-4" aria-hidden="true" />
         New scan
       </AppButton>
@@ -84,7 +86,9 @@ onBeforeUnmount(() => clearTimeout(timer))
       <p class="mx-auto mt-1 max-w-sm text-sm text-fg-muted">
         Start one with a URL and follow it live.
       </p>
-      <AppButton class="mt-5" @click="dialogOpen = true">New scan</AppButton>
+      <AppButton class="mt-5" :disabled="pending" :title="pendingHint" @click="dialogOpen = true">
+        New scan
+      </AppButton>
     </section>
 
     <div v-else class="mt-8 overflow-x-auto rounded-lg border border-line bg-surface-raised">
@@ -141,7 +145,8 @@ onBeforeUnmount(() => clearTimeout(timer))
             <td class="px-4 py-3 text-right tabular-nums">{{ formatUsd(scan.costUsd) }}</td>
             <td v-if="isAdmin" class="px-4 py-3">
               <span class="block max-w-[12rem] truncate" :title="scan.owner.email">
-                {{ scan.owner.name }}
+                {{ scan.owner.name
+                }}<span v-if="scan.owner.removed" class="text-fg-muted"> (removed)</span>
               </span>
             </td>
             <td class="px-4 py-3 whitespace-nowrap text-fg-muted">
