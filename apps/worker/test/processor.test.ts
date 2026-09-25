@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, expect, test } from 'bun:test'
 import { createScanProcessor, strixEnv } from '../src/processor'
+import type { Sandboxes } from '../src/sandbox'
 import { createScanStore } from '../src/scan-store'
 
 const { db, pool } = createDb(process.env.DATABASE_URL!)
@@ -40,8 +41,14 @@ async function createScan(status: 'queued' | 'running' = 'queued') {
 
 async function processor(scenario: string) {
   const workDir = await mkdtemp(join(tmpdir(), 'strix-worker-'))
+  const removed: string[] = []
+  const sandboxes: Sandboxes = {
+    remove: async (scanId) => void removed.push(scanId),
+    scanIds: async () => [],
+  }
   const process = createScanProcessor({
     store,
+    sandboxes,
     strixBin: FAKE_STRIX,
     workDir,
     pollIntervalMs: 100,
@@ -51,6 +58,7 @@ async function processor(scenario: string) {
   })
   return {
     workDir,
+    removed,
     process: (scanId: string) => process({ id: scanId, data: { scanId } } as ScanJob),
   }
 }
@@ -65,11 +73,12 @@ const events = (id: string) =>
 
 test('a completed run mirrors usage, agents, findings and the report', async () => {
   const scan = await createScan()
-  const { workDir, process } = await processor('completed')
+  const { workDir, removed, process } = await processor('completed')
   await process(scan.id)
 
   const done = (await load(scan.id))!
   expect(done.status).toBe('completed')
+  expect(removed).toEqual([scan.id])
   expect(done.runName).toBe('example-com_ab12')
   expect(done).toMatchObject({
     requests: 4,
@@ -111,35 +120,41 @@ test('a completed run mirrors usage, agents, findings and the report', async () 
   const argv = (await Bun.file(join(workDir, scan.id, 'argv.txt')).text()).trim().split('\n')
   expect(argv).toEqual(['-n', '-t', 'https://example.com/', '-m', 'quick', '--max-budget', '5'])
   expect(strixEnv({ DATABASE_URL: 'x', STRIX_LLM: 'y' })).toEqual({ STRIX_LLM: 'y' })
+  // Strix labels its sandbox containers with the scan id, so they can be removed afterwards.
+  const labels = (await Bun.file(join(workDir, scan.id, 'labels.txt')).text()).trim().split('\n')
+  expect(labels).toEqual([scan.id, 'strix-panel'])
 })
 
 test('a non-zero exit without completion fails the scan with the stderr tail', async () => {
   const scan = await createScan()
-  const { process } = await processor('failed')
+  const { removed, process } = await processor('failed')
   await process(scan.id)
   const done = (await load(scan.id))!
   expect(done.status).toBe('failed')
+  expect(removed).toEqual([scan.id])
   expect(done.error).toContain('code 2')
   expect(done.error).toContain('no LLM configured')
 })
 
 test('a stop request signals Strix and ends as stopped', async () => {
   const scan = await createScan()
-  const { process } = await processor('hang')
+  const { removed, process } = await processor('hang')
   const running = process(scan.id)
   await Bun.sleep(400)
   await db.update(schema.scan).set({ status: 'stopping' }).where(eq(schema.scan.id, scan.id))
   await running
   expect((await load(scan.id))!.status).toBe('stopped')
+  expect(removed).toEqual([scan.id])
 }, 15_000)
 
 test('a redelivered job for a running scan marks it failed instead of restarting it', async () => {
   const scan = await createScan('running')
-  const { process } = await processor('completed')
+  const { removed, process } = await processor('completed')
   await process(scan.id)
   const done = (await load(scan.id))!
   expect(done.status).toBe('failed')
   expect(done.error).toBe('Worker restarted during the scan')
+  expect(removed).toEqual([scan.id])
 })
 
 test('a scan that is no longer queued is skipped', async () => {

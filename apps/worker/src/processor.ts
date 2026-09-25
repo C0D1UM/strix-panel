@@ -4,6 +4,7 @@ import type { ScanJob } from '@strix-panel/db/queue'
 import { isFinishedScanStatus } from '@strix-panel/shared'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createDockerSandboxes, removeSandboxes, SANDBOX_RUN_TYPE, type Sandboxes } from './sandbox'
 import type { ScanRow, ScanStore } from './scan-store'
 import { buildStrixArgs } from './strix/args'
 import { diffRunState } from './strix/diff'
@@ -16,6 +17,8 @@ export interface ProcessorOptions {
   pollIntervalMs: number
   // Environment for the Strix process. Defaults to ours minus DATABASE_URL: the agent must not see DB credentials.
   env?: Record<string, string | undefined>
+  // Strix's Docker containers, removed once a scan ends. Defaults to the docker CLI.
+  sandboxes?: Sandboxes
   // How long to wait after SIGINT before escalating (shortened in tests).
   sigtermAfterMs?: number
   sigkillAfterMs?: number
@@ -32,6 +35,7 @@ export function strixEnv(source: Record<string, string | undefined> = process.en
 export function createScanProcessor(options: ProcessorOptions) {
   const { store, sigtermAfterMs = 30_000, sigkillAfterMs = 60_000 } = options
   const env = options.env ?? strixEnv()
+  const sandboxes = options.sandboxes ?? createDockerSandboxes()
 
   async function run(scan: ScanRow): Promise<void> {
     const cwd = join(options.workDir, scan.id)
@@ -41,7 +45,8 @@ export function createScanProcessor(options: ProcessorOptions) {
 
     const proc = Bun.spawn(buildStrixArgs(options.strixBin, scan), {
       cwd,
-      env,
+      // Strix labels its sandbox containers with these, so they can be found and removed afterwards.
+      env: { ...env, STRIX_RUN_ID: scan.id, STRIX_RUN_TYPE: SANDBOX_RUN_TYPE },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -141,6 +146,7 @@ export function createScanProcessor(options: ProcessorOptions) {
         error: 'Worker restarted during the scan',
         finishedAt: new Date(),
       })
+      await removeSandboxes(sandboxes, scan.id)
       return
     }
     if (scan.status !== 'queued' || !(await store.start(scan.id))) return
@@ -149,6 +155,9 @@ export function createScanProcessor(options: ProcessorOptions) {
     } catch (error) {
       await markFailed(store, scan.id, (error as Error).message)
       throw error
+    } finally {
+      // Whatever the outcome: completed, failed, stopped or a crash in our own code.
+      await removeSandboxes(sandboxes, scan.id)
     }
   }
 }

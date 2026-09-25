@@ -7,6 +7,7 @@ set -eu
 run=strix_runs/example-com_ab12
 mkdir -p "$run/.state"
 printf '%s\n' "$@" > argv.txt
+printf '%s\n' "${STRIX_RUN_ID:-}" "${STRIX_RUN_TYPE:-}" > labels.txt
 
 write_run() {
   cat > "$run/run.json" <<JSON

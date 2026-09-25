@@ -31,7 +31,7 @@ Request flow: browser → Caddy (`web` container) → `/api/*` reverse-proxied t
 
 Job flow: `api` inserts a `scan` row and enqueues `{ scanId }` on the `scans` queue → `worker` runs `strix -n` in `<STRIX_WORK_DIR>/<scanId>/` → every `STRIX_POLL_INTERVAL_MS` it reads `run.json`, `.state/agents.json` and `vulnerabilities.json` and writes usage, agents, findings and feed events to Postgres, then `pg_notify('scan_updates', scanId)` → `api` holds one `LISTEN` connection and pushes changes to browsers over SSE (`GET /api/v1/scans/:id/stream`). There is no Redis: BullMQ uses its Postgres backend (schema `bullmq`).
 
-Scan lifecycle: `queued` → `running` → `completed` | `failed` | `stopped`, with `stopping` after a stop request (the worker sees it on its next poll and sends SIGINT, then SIGTERM after 30 s and SIGKILL after 60 s). A worker restart mid-scan marks the scan `failed` (no resume). Status values live in `packages/shared`.
+Scan lifecycle: `queued` → `running` → `completed` | `failed` | `stopped`, with `stopping` after a stop request (the worker sees it on its next poll and sends SIGINT, then SIGTERM after 30 s and SIGKILL after 60 s). A worker restart mid-scan marks the scan `failed` (no resume). Sandbox containers: the worker sets `STRIX_RUN_ID=<scanId>` and `STRIX_RUN_TYPE=strix-panel`, which Strix turns into container labels; when a scan ends (any outcome) the worker force-removes that scan's containers, and on startup it sweeps containers of scans that are already finished (`apps/worker/src/sandbox.ts`). Status values live in `packages/shared`.
 
 ## Commands
 
