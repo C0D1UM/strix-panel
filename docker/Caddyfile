@@ -1,8 +1,6 @@
 # SITE_ADDRESS defaults to plain HTTP on :80. Set it to your domain (e.g. panel.example.com)
 # and publish ports 80/443 to get automatic HTTPS.
 {$SITE_ADDRESS::80} {
-	encode zstd gzip
-
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
@@ -11,10 +9,14 @@
 	}
 
 	handle /api/* {
+		# Never compress the SSE stream: a proxy in front (e.g. Cloudflare) may buffer a compressed stream.
+		@compressible not path_regexp ^/api/v1/scans/[^/]+/stream$
+		encode @compressible zstd gzip
 		reverse_proxy api:3000
 	}
 
 	handle {
+		encode zstd gzip
 		root * /srv
 		try_files {path} /index.html
 		file_server

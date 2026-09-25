@@ -289,6 +289,7 @@ describe('GET /api/v1/scans/:id/stream', () => {
     })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('text/event-stream')
+    expect(res.headers.get('cache-control')).toContain('no-transform')
 
     const { frames, reader } = await readFrames(res, (f) => f.length >= 1)
     expect(frames[0]).toContain('event: snapshot')

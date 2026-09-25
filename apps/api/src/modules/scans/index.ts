@@ -85,13 +85,17 @@ export const scansModule = new Elysia({ name: 'scans', prefix: '/scans' })
   )
   .get(
     '/:id/stream',
-    async ({ user, params, request }) =>
-      streamScan(
+    async ({ user, params, request, set }) => {
+      const scan = await getScan(user, params.id)
+      // no-transform: stops proxies such as Cloudflare from compressing, and so buffering, the stream.
+      set.headers['cache-control'] = 'no-cache, no-transform'
+      return streamScan(
         user,
-        await getScan(user, params.id),
+        scan,
         request.headers.get('last-event-id') ?? undefined,
         request.signal,
-      ),
+      )
+    },
     {
       // No `response` schema: Elysia types SSE by the generator's yields, and TypeBox can't describe a stream.
       requireAuth: true,
