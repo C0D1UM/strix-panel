@@ -1,13 +1,13 @@
 import { schema } from '@strix-panel/db'
 import { notifyScanUpdate } from '@strix-panel/db/notify'
-import { enqueueScan, removeScanJob } from '@strix-panel/db/queue'
+import { enqueueScan, releaseScanJob, removeScanJob } from '@strix-panel/db/queue'
 import {
   MAX_SCAN_TARGETS,
   normalizeScanTarget,
   type ScanMode,
   type ScanStatus,
 } from '@strix-panel/shared'
-import { and, asc, count, desc, eq, gt, sql, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, isNull, sql, type SQL } from 'drizzle-orm'
 import type { AuthUser } from '../../lib/auth'
 import { db } from '../../lib/db'
 import { BadRequestError, ConflictError, NotFoundError } from '../../lib/errors'
@@ -208,6 +208,50 @@ export async function stopScan(viewer: Viewer, id: string): Promise<ScanDto> {
     await transition(id, 'running', 'stopping', 'Stop requested')
   } else {
     throw new ConflictError('SCAN_NOT_RUNNING', `Scan is ${scan.status} and cannot be stopped`)
+  }
+  return getScan(viewer, id)
+}
+
+// Only a scan that failed before Strix created its run directory can be retried: nothing has run or been billed yet.
+export async function retryScan(viewer: Viewer, id: string): Promise<ScanDto> {
+  const { scan } = await findScan(viewer, id)
+  const notRetryable = () =>
+    new ConflictError(
+      'SCAN_NOT_RETRYABLE',
+      'Only a scan that failed before Strix started can be retried',
+    )
+  if (scan.status !== 'failed' || scan.runName !== null) throw notRetryable()
+  if (!(await releaseScanJob(scanQueue, id))) {
+    throw new ConflictError(
+      'SCAN_NOT_RETRYABLE',
+      'The previous attempt is still finishing, try again shortly',
+    )
+  }
+  const requeued = await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(schema.scan)
+      .set({ status: 'queued', error: null, startedAt: null, finishedAt: null })
+      .where(
+        and(eq(schema.scan.id, id), eq(schema.scan.status, 'failed'), isNull(schema.scan.runName)),
+      )
+      .returning({ id: schema.scan.id })
+    if (rows.length === 0) return false
+    await tx
+      .insert(schema.scanEvent)
+      .values({ scanId: id, type: 'status', message: 'Scan retried' })
+    return true
+  })
+  if (!requeued) throw notRetryable()
+  try {
+    await enqueueScan(scanQueue, id)
+  } catch (error) {
+    await db
+      .update(schema.scan)
+      .set({ status: 'failed', error: 'Could not enqueue the scan', finishedAt: new Date() })
+      .where(eq(schema.scan.id, id))
+    throw error
+  } finally {
+    await notifyScanUpdate(db, id)
   }
   return getScan(viewer, id)
 }
