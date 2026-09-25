@@ -1,4 +1,4 @@
-import type { FindingSeverity, ScanStatus } from '@strix-panel/shared'
+import type { FindingSeverity, ScanStatus, ScanTab } from '@strix-panel/shared'
 import type { api } from './api'
 
 type ScanList = NonNullable<Awaited<ReturnType<typeof api.v1.scans.get>>['data']>
@@ -15,6 +15,14 @@ export const STATUS_LABELS: Record<ScanStatus, string> = {
   queued: 'Queued',
   running: 'Running',
   stopping: 'Stopping',
+  completed: 'Completed',
+  failed: 'Failed',
+  stopped: 'Stopped',
+}
+
+export const SCAN_TAB_LABELS: Record<ScanTab, string> = {
+  all: 'All',
+  active: 'Active',
   completed: 'Completed',
   failed: 'Failed',
   stopped: 'Stopped',
