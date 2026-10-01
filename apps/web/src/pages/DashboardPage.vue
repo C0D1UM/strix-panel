@@ -75,7 +75,7 @@ const segment = (active: boolean) =>
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl px-4 py-10 sm:px-8">
+  <div class="mx-auto max-w-screen-2xl px-4 py-10 sm:px-8">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div v-if="currentUser" class="flex items-center gap-4">
         <UserAvatar :name="currentUser.name" :image="currentUser.image" size="lg" />
