@@ -104,8 +104,6 @@ See [AGENTS.md](AGENTS.md) for the full map and conventions.
 
 All the scanning is done by [Strix](https://strix.ai), the open-source AI penetration-testing agent by its authors at [usestrix/strix](https://github.com/usestrix/strix). Strix Panel only launches the Strix CLI, reads what it writes and presents it in the browser. If the panel is useful to you, please star and support [the Strix project](https://github.com/usestrix/strix).
 
-Strix Panel is built by [CODIUM](https://codium.co).
-
 ## Disclaimer
 
 Strix Panel is an independent, community project. It is not affiliated with, endorsed by, or sponsored by Strix or its maintainers. "Strix" and related names and logos belong to their respective owners and are used here only to describe what this panel works with. For Strix itself, its license and its support, see [strix.ai](https://strix.ai) and [github.com/usestrix/strix](https://github.com/usestrix/strix).
