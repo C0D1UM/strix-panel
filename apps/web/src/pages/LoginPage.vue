@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppCredits from '../components/AppCredits.vue'
 import BrandMark from '../components/BrandMark.vue'
 import RadarSweep from '../components/RadarSweep.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import AppButton from '../components/ui/AppButton.vue'
-import { api } from '../lib/api'
 import { authClient } from '../lib/auth-client'
+import { loadPublicConfig } from '../lib/public-config'
 import { loadSession } from '../lib/session'
 
 type Provider = 'google' | 'email'
@@ -44,7 +45,7 @@ if (typeof route.query.error === 'string') {
 }
 
 onMounted(async () => {
-  const { data } = await api.v1.config.get()
+  const data = await loadPublicConfig()
   if (data) {
     providers.value = data.auth.providers
     registrationEnabled.value = data.auth.registrationEnabled
@@ -95,10 +96,13 @@ async function submitEmail() {
       <div class="flex justify-center">
         <RadarSweep />
       </div>
-      <p class="max-w-md text-sm text-fg-muted">
-        Run Strix security scans from one place, follow their progress, and review findings with
-        your team.
-      </p>
+      <div class="space-y-4">
+        <p class="max-w-md text-sm text-fg-muted">
+          Run Strix security scans from one place, follow their progress, and review findings with
+          your team.
+        </p>
+        <AppCredits />
+      </div>
     </aside>
 
     <main class="flex flex-col px-6 py-8 sm:px-12">
@@ -204,6 +208,8 @@ async function submitEmail() {
           </form>
         </div>
       </div>
+
+      <AppCredits class="lg:hidden" />
     </main>
   </div>
 </template>

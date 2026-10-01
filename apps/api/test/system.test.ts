@@ -12,6 +12,7 @@ describe('system', () => {
     const res = await request('/api/v1/config')
     expect(await res.json()).toEqual({
       auth: { providers: ['email'], registrationEnabled: true },
+      branding: { showPoweredBy: false },
     })
   })
 

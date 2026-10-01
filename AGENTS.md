@@ -102,6 +102,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 - Action feedback: `useToast().toast(message, 'success' | 'error')` (`src/composables/useToast.ts`), rendered by `AppToaster` in `AppLayout`. Keep inline errors for things that block the page (a failed load).
 - UI primitives live in `src/components/ui/` (`AppButton`, …). No UI kit. Add Reka UI only when a component needs accessible interaction (menus, dialogs, comboboxes).
 - Copy: sentence case, plain verbs, and buttons say what they do.
+- Credits: `AppCredits` (sign-in page and expanded sidebar) links Strix (strix.ai and its GitHub repo). The "Powered by CODIUM" line is hidden unless `SHOW_POWERED_BY_CODIUM=true`, exposed to the SPA as `branding.showPoweredBy` on the public `GET /api/v1/config` (`src/lib/public-config.ts`, loaded once and shared).
 
 ### General
 

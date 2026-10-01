@@ -46,6 +46,7 @@ services:
       AUTH_REGISTRATION_ENABLED: ${AUTH_REGISTRATION_ENABLED:-true}
       AUTH_AUTO_APPROVE_USERS: ${AUTH_AUTO_APPROVE_USERS:-true}
       ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
+      SHOW_POWERED_BY_CODIUM: ${SHOW_POWERED_BY_CODIUM:-false}
     volumes:
       - reports:/app/reports:ro
     healthcheck:

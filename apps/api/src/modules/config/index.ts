@@ -3,7 +3,7 @@ import { enabledAuthProviders } from '../../lib/auth'
 import { env } from '../../lib/env'
 import { PublicConfigResponse } from './schema'
 
-// Unauthenticated: the login page reads which sign-in methods to show.
+// Unauthenticated: the login page reads which sign-in methods and credits to show.
 export const configModule = new Elysia({ name: 'config' }).get(
   '/config',
   () => ({
@@ -11,6 +11,7 @@ export const configModule = new Elysia({ name: 'config' }).get(
       providers: [...enabledAuthProviders],
       registrationEnabled: env.AUTH_REGISTRATION_ENABLED,
     },
+    branding: { showPoweredBy: env.SHOW_POWERED_BY_CODIUM },
   }),
   {
     response: PublicConfigResponse,
