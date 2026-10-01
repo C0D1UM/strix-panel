@@ -112,4 +112,4 @@ Only scan targets you own or have explicit permission to test.
 
 ## License
 
-[Apache-2.0](LICENSE)
+[Apache-2.0](LICENSE). Keep the [NOTICE](NOTICE) file when you redistribute the panel or a modified version of it.
