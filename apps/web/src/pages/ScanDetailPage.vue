@@ -142,7 +142,7 @@ const codeLocations = (report: Record<string, unknown>): string[] => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl px-4 py-10 sm:px-8">
+  <div class="mx-auto max-w-screen-2xl px-4 py-10 sm:px-8">
     <p v-if="error && !scan" role="alert" class="text-sm text-danger">{{ error }}</p>
 
     <template v-else-if="scan">
