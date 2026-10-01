@@ -11,7 +11,6 @@ A self-hosted web panel for [Strix](https://strix.ai) ([GitHub](https://github.c
 - **Dashboard**: runs, tokens, cost and findings by severity over a chosen date range, with a trend chart.
 - **Admin view**: admins see every user's scans, plus usage across everyone, a per-user breakdown and queue health.
 - Light and dark themes, and an OpenAPI description of the API at `/api/docs`.
-- Optional "Powered by CODIUM" credit on the sign-in page and in the sidebar, off by default: set `SHOW_POWERED_BY_CODIUM=true` in `.env`.
 
 ## Deploy on a Linux server
 
