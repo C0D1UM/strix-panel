@@ -27,7 +27,7 @@ const user = (over: Partial<CurrentUser>): CurrentUser => ({
 const mountSidebar = (collapsed = false) =>
   mount(AppSidebar, {
     props: { variant: 'desktop', collapsed },
-    global: { plugins: [router], stubs: { ThemeToggle: true } },
+    global: { plugins: [router], stubs: { ThemeToggle: true, AppCredits: true } },
   })
 
 afterEach(() => {
@@ -59,4 +59,10 @@ test('collapsed sidebar shows a dot instead of the count', () => {
   const wrapper = mountSidebar(true)
   expect(wrapper.find('[data-testid="nav-badge-dot"]').exists()).toBe(true)
   expect(wrapper.find('[data-testid="nav-badge"]').exists()).toBe(false)
+})
+
+test('expanded sidebar shows credits; collapsed hides them', () => {
+  currentUser.value = user({})
+  expect(mountSidebar().findComponent({ name: 'AppCredits' }).exists()).toBe(true)
+  expect(mountSidebar(true).findComponent({ name: 'AppCredits' }).exists()).toBe(false)
 })

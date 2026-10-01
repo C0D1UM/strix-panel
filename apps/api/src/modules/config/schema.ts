@@ -5,4 +5,8 @@ export const PublicConfigResponse = t.Object({
     providers: t.Array(t.Union([t.Literal('google'), t.Literal('email')])),
     registrationEnabled: t.Boolean(),
   }),
+  branding: t.Object({
+    // Show the "Powered by CODIUM" credit (SHOW_POWERED_BY_CODIUM).
+    showPoweredBy: t.Boolean(),
+  }),
 })

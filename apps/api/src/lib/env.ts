@@ -28,6 +28,8 @@ const schema = Type.Object({
   AUTH_AUTO_APPROVE_USERS: Type.Boolean({ default: true }),
   // Comma-separated. Empty means any email may sign in.
   ALLOWED_EMAIL_DOMAINS: Type.String({ default: '' }),
+  // Shows a "Powered by CODIUM" credit in the web app. Off by default.
+  SHOW_POWERED_BY_CODIUM: Type.Boolean({ default: false }),
   // PDF reports rendered by the worker. Must be the same directory as the worker's REPORT_DIR.
   REPORT_DIR: Type.String({ default: DEFAULT_REPORT_DIR }),
   // Local-only admin created by `bun run db:seed`.

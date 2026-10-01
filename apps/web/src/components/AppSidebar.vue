@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { currentUser } from '../lib/current-user'
+import AppCredits from './AppCredits.vue'
 import BrandMark from './BrandMark.vue'
 import ThemeToggle from './ThemeToggle.vue'
 import UserAvatar from './UserAvatar.vue'
@@ -192,6 +193,7 @@ const visibleSections = computed(() =>
           <span class="icon-[lucide--log-out] size-4" aria-hidden="true" />
         </button>
       </div>
+      <AppCredits v-if="!isCollapsed" class="px-1" />
     </div>
   </div>
 </template>

@@ -1,6 +1,6 @@
 # Strix Panel
 
-A self-hosted web panel for [Strix](https://github.com/usestrix/strix), the open-source AI penetration-testing agent. Strix ships as a CLI; Strix Panel wraps it so a team can launch scans from the browser, follow them live, review findings and track LLM token usage and cost.
+A self-hosted web panel for [Strix](https://strix.ai) ([GitHub](https://github.com/usestrix/strix)), the open-source AI penetration-testing agent. Strix ships as a CLI; Strix Panel wraps it so a team can launch scans from the browser, follow them live, review findings and track LLM token usage and cost.
 
 ## Features
 
@@ -11,6 +11,7 @@ A self-hosted web panel for [Strix](https://github.com/usestrix/strix), the open
 - **Dashboard**: runs, tokens, cost and findings by severity over a chosen date range, with a trend chart.
 - **Admin view**: admins see every user's scans, plus usage across everyone, a per-user breakdown and queue health.
 - Light and dark themes, and an OpenAPI description of the API at `/api/docs`.
+- Optional "Powered by CODIUM" credit on the sign-in page and in the sidebar, off by default: set `SHOW_POWERED_BY_CODIUM=true` in `.env`.
 
 ## Deploy on a Linux server
 
@@ -99,6 +100,18 @@ browser ──► Caddy (web) ──► /api/*  ──► api (Elysia) ──►
 ```
 
 See [AGENTS.md](AGENTS.md) for the full map and conventions.
+
+## Credits
+
+All the scanning is done by [Strix](https://strix.ai), the open-source AI penetration-testing agent by its authors at [usestrix/strix](https://github.com/usestrix/strix). Strix Panel only launches the Strix CLI, reads what it writes and presents it in the browser. If the panel is useful to you, please star and support [the Strix project](https://github.com/usestrix/strix).
+
+Strix Panel is built by [CODIUM](https://codium.co).
+
+## Disclaimer
+
+Strix Panel is an independent, community project. It is not affiliated with, endorsed by, or sponsored by Strix or its maintainers. "Strix" and related names and logos belong to their respective owners and are used here only to describe what this panel works with. For Strix itself, its license and its support, see [strix.ai](https://strix.ai) and [github.com/usestrix/strix](https://github.com/usestrix/strix).
+
+Only scan targets you own or have explicit permission to test.
 
 ## License
 
