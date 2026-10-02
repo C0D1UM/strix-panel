@@ -167,18 +167,24 @@ const visibleSections = computed(() =>
       </div>
     </nav>
 
+    <div class="flex justify-center px-3 pt-2 pb-3">
+      <ThemeToggle :compact="isCollapsed" />
+    </div>
     <div class="space-y-3 border-t border-line p-3">
-      <div :class="{ 'flex justify-center': isCollapsed }">
-        <ThemeToggle :compact="isCollapsed" />
-      </div>
       <div v-if="currentUser" class="flex items-center gap-3" :class="{ 'flex-col': isCollapsed }">
         <UserAvatar
           :name="currentUser.name"
           :image="currentUser.image"
           :title="isCollapsed ? `${currentUser.name} (${currentUser.email})` : undefined"
         />
+        <span v-if="isCollapsed" class="sr-only">{{ currentUser.name }}</span>
         <div v-if="!isCollapsed" class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{{ currentUser.name }}</p>
+          <p
+            class="truncate text-sm font-medium"
+            :title="`${currentUser.name} (${currentUser.email})`"
+          >
+            {{ currentUser.name }}
+          </p>
           <p class="truncate text-xs text-fg-muted">
             {{ currentUser.role === 'admin' ? 'Admin' : 'Member' }}
           </p>
@@ -187,13 +193,14 @@ const visibleSections = computed(() =>
           type="button"
           aria-label="Sign out"
           title="Sign out"
-          class="grid size-8 shrink-0 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface-sunken hover:text-fg"
+          class="grid shrink-0 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface-sunken hover:text-fg"
+          :class="variant === 'drawer' ? 'size-9' : 'size-8'"
           @click="emit('signOut')"
         >
           <span class="icon-[lucide--log-out] size-4" aria-hidden="true" />
         </button>
       </div>
-      <AppCredits v-if="!isCollapsed" class="px-1" />
+      <AppCredits v-if="!isCollapsed" class="justify-center px-1" />
     </div>
   </div>
 </template>

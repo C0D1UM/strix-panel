@@ -17,11 +17,11 @@ afterEach(() => {
   publicConfig.value = null
 })
 
-test('credits Strix with links to its site and GitHub repo', () => {
+test('links the panel repo and credits Strix', () => {
   const hrefs = mount(AppCredits)
     .findAll('a')
     .map((a) => a.attributes('href'))
-  expect(hrefs).toEqual(['https://strix.ai', 'https://github.com/usestrix/strix'])
+  expect(hrefs).toEqual(['https://github.com/C0D1UM/strix-panel', 'https://strix.ai'])
 })
 
 test('hides the CODIUM credit by default', () => {
@@ -31,7 +31,7 @@ test('hides the CODIUM credit by default', () => {
 
 test('shows the CODIUM credit when enabled', () => {
   publicConfig.value = config(true)
-  const credit = mount(AppCredits).find('[data-testid="powered-by"]')
-  expect(credit.text()).toBe('Powered by CODIUM')
-  expect(credit.find('a').attributes('href')).toBe('https://codium.co')
+  const wrapper = mount(AppCredits)
+  expect(wrapper.text()).toContain('Built on Strix by CODIUM')
+  expect(wrapper.find('[data-testid="powered-by"]').attributes('href')).toBe('https://codium.co')
 })
