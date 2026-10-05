@@ -4,9 +4,28 @@ import DashboardPage from '../src/pages/DashboardPage.vue'
 import { currentUser, type CurrentUser } from '../src/lib/current-user'
 
 const get = vi.fn()
+const budgetGet = vi.fn()
 vi.mock('../src/lib/api', () => ({
-  api: { v1: { dashboard: { get: (options: unknown) => get(options) } } },
+  api: {
+    v1: {
+      dashboard: { get: (options: unknown) => get(options) },
+      me: { budget: { get: () => budgetGet() } },
+    },
+  },
 }))
+
+const myBudget = (limitUsd: number | null, spentUsd: number) => ({
+  data: {
+    limitUsd,
+    window: 'month',
+    spentUsd,
+    remainingUsd: limitUsd === null ? null : Math.max(0, limitUsd - spentUsd),
+    minToStartUsd: 3,
+    windowStartsAt: '2026-10-01T00:00:00.000Z',
+    resetsAt: '2026-11-01T00:00:00.000Z',
+  },
+  error: null,
+})
 
 const zeroFindings = { critical: 0, high: 0, medium: 0, low: 0, info: 1 }
 const response = (withAdmin: boolean, total = 1) => ({
@@ -56,7 +75,11 @@ const signIn = (role: 'admin' | 'user') => {
   } as CurrentUser
 }
 
-beforeEach(() => get.mockReset())
+beforeEach(() => {
+  get.mockReset()
+  budgetGet.mockReset()
+  budgetGet.mockResolvedValue(myBudget(null, 4.2))
+})
 
 test('members see their metrics without admin sections or the scope toggle', async () => {
   signIn('user')
@@ -120,4 +143,22 @@ test('hides the previous data when a reload fails', async () => {
   await flushPromises()
   expect(wrapper.find('[role="alert"]').exists()).toBe(true)
   expect(wrapper.text()).not.toContain('$1.50')
+})
+
+test("shows the viewer's budget: what is left, or unlimited", async () => {
+  signIn('user')
+  get.mockResolvedValue(response(false))
+  budgetGet.mockResolvedValue(myBudget(50, 37.6))
+  const limited = mount(DashboardPage, { global: { stubs } })
+  await flushPromises()
+  const card = limited.find('[data-testid="budget-card"]')
+  expect(card.text()).toContain('$12.40 left')
+  expect(card.text()).toContain('$37.60 of $50.00 spent this month')
+
+  budgetGet.mockResolvedValue(myBudget(null, 4.2))
+  const unlimited = mount(DashboardPage, { global: { stubs } })
+  await flushPromises()
+  const open = unlimited.find('[data-testid="budget-card"]')
+  expect(open.text()).toContain('Unlimited')
+  expect(open.text()).toContain('$4.20 spent this month')
 })

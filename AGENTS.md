@@ -19,14 +19,14 @@ Strix facts that shape the design:
 
 Bun workspaces monorepo. Bun is the runtime, package manager and test runner (web tests use Vitest).
 
-| Path              | Owns                                                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api`        | Elysia HTTP API under `/api`. Auth, business logic, enqueueing jobs. Swagger at `/api/docs`.                                    |
-| `apps/web`        | Vue 3 + Vite SPA. Talks to the API only through Eden Treaty (`src/lib/api.ts`) and the Better Auth client.                      |
-| `apps/worker`     | BullMQ consumer. The only process that runs `strix` and touches Docker.                                                         |
-| `packages/db`     | Drizzle schema, migrations, DB client, the queue module (`@strix-panel/db/queue`) and LISTEN/NOTIFY (`@strix-panel/db/notify`). |
-| `packages/shared` | Framework-free code used by several apps: roles, themes, env parsing, small pure helpers.                                       |
-| `docker/`         | Dockerfiles and the Caddyfile. Released as `ghcr.io/c0d1um/strix-panel-{api,web,worker}`.                                       |
+| Path              | Owns                                                                                                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`        | Elysia HTTP API under `/api`. Auth, business logic, enqueueing jobs. Swagger at `/api/docs`.                                                                                  |
+| `apps/web`        | Vue 3 + Vite SPA. Talks to the API only through Eden Treaty (`src/lib/api.ts`) and the Better Auth client.                                                                    |
+| `apps/worker`     | BullMQ consumer. The only process that runs `strix` and touches Docker.                                                                                                       |
+| `packages/db`     | Drizzle schema, migrations, DB client, the queue module (`@strix-panel/db/queue`), LISTEN/NOTIFY (`@strix-panel/db/notify`) and user budget spend (`@strix-panel/db/budget`). |
+| `packages/shared` | Framework-free code used by several apps: roles, themes, env parsing, small pure helpers.                                                                                     |
+| `docker/`         | Dockerfiles and the Caddyfile. Released as `ghcr.io/c0d1um/strix-panel-{api,web,worker}`.                                                                                     |
 
 Request flow: browser → Caddy (`web` container) → `/api/*` reverse-proxied to `api`, everything else served from the SPA build. Same origin everywhere (Vite proxies `/api` in dev), so auth is a plain httpOnly session cookie — no CORS, no tokens in JS.
 
@@ -88,6 +88,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
   - Auto-approve off makes new users start pending (`user.approved_at` null): they can sign in and see the dashboard and scans, but creating or resuming a scan returns 403 `PENDING_APPROVAL` until an admin approves them on Admin → Users. Decided at sign-up; changing it never changes existing users. The first admin and the `db:seed` admin are always approved.
 - Admins manage users at `/api/v1/admin/users` (`src/modules/users`). Disable = Better Auth's `banned` (sign-in refused, sessions deleted). Remove = soft delete (`user.deleted_at`; sign-in refused in the `session.create` hook, sessions deleted, scans kept). Status comes from `userStatus()` in `packages/shared`. No one can act on their own account, and at least one active admin always remains (same advisory lock as `promoteIfFirstAdmin`). The admin plugin's own `/api/auth/admin/*` endpoints are not served (404 in `src/app.ts`) because they skip those guardrails.
 - The first user becomes admin (`promoteIfFirstAdmin`, serialized by an advisory lock).
+- Budgets: each user has `user.budget_usd` (null = unlimited, the default; 0 = no scans) per `user.budget_window` (`week` | `month` | `year` | `forever`; calendar periods in UTC, weeks from Monday). Spend = `cost_usd` of the user's scans created in the current window, any status (`getUserBudget` in `@strix-panel/db/budget`; math in `packages/shared/src/budget.ts`). A limited user needs `MIN_SCAN_BUDGET_USD` (default 3), and more than $0, left to create or resume a scan (403 `BUDGET_INSUFFICIENT`; for a resume the owner's budget is checked, whoever clicks). A limited user can't resume a scan created before the current window (403 `BUDGET_WINDOW_CLOSED`): its spend would count toward a window that is over, and a scan's own cap can't exceed what is left (400 `BUDGET_EXCEEDED`). When a scan starts, the worker checks again and runs it with `--max-budget min(scan cap, cost so far + remaining)`; the effective cap is not stored, only logged in the feed. Parallel scans can overshoot (nothing is reserved), and running scans are never stopped by a budget change. Admins set budgets with `PATCH /api/v1/admin/users/:id/budget`, the one admin action allowed on their own account. Users see theirs at `GET /api/v1/me/budget`.
 - Roles: `admin`, `user` (`packages/shared`).
 
 ### Web (`apps/web`)

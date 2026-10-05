@@ -19,6 +19,7 @@ describe('system', () => {
     expect(await res.json()).toEqual({
       auth: { providers: ['email'], registrationEnabled: true },
       branding: { showPoweredBy: false },
+      budget: { minToStartUsd: 3 },
     })
   })
 

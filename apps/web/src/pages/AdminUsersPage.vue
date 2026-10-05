@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import SetBudgetDialog from '../components/SetBudgetDialog.vue'
 import UserActionsMenu from '../components/UserActionsMenu.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 import UserStatusBadge from '../components/UserStatusBadge.vue'
@@ -14,6 +15,7 @@ import {
   actionFailed,
   CONFIRMATIONS,
   filterUsers,
+  formatUserBudget,
   runUserAction,
   TAB_LABELS,
   USER_TABS,
@@ -30,6 +32,17 @@ const tab = ref<UserTab>('all')
 const search = ref('')
 const busyId = ref<string | null>(null)
 const confirming = ref<{ user: AdminUser; action: UserAction } | null>(null)
+const budgetUser = ref<AdminUser | null>(null)
+const budgetOpen = computed({
+  get: () => budgetUser.value !== null,
+  set: (open) => {
+    if (!open) budgetUser.value = null
+  },
+})
+
+function budgetSaved(saved: AdminUser) {
+  users.value = users.value.map((u) => (u.id === saved.id ? saved : u))
+}
 
 const visible = computed(() => filterUsers(users.value, tab.value, search.value))
 const counts = computed(() =>
@@ -148,7 +161,7 @@ onMounted(load)
             <th class="px-4 py-3 font-medium">Role</th>
             <th class="px-4 py-3 font-medium">Status</th>
             <th class="px-4 py-3 text-right font-medium">Runs</th>
-            <th class="px-4 py-3 text-right font-medium">This month</th>
+            <th class="px-4 py-3 text-right font-medium">Budget</th>
             <th class="px-4 py-3 text-right font-medium">Total cost</th>
             <th class="px-4 py-3 font-medium">Last run</th>
             <th class="px-4 py-3"><span class="sr-only">Actions</span></th>
@@ -182,8 +195,8 @@ onMounted(load)
             <td class="px-4 py-3">{{ user.role === 'admin' ? 'Admin' : 'Member' }}</td>
             <td class="px-4 py-3"><UserStatusBadge :status="user.status" /></td>
             <td class="px-4 py-3 text-right tabular-nums">{{ user.runs }}</td>
-            <td class="px-4 py-3 text-right tabular-nums">
-              {{ formatUsd(user.costThisMonthUsd) }}
+            <td data-testid="budget" class="px-4 py-3 text-right whitespace-nowrap tabular-nums">
+              {{ formatUserBudget(user) }}
             </td>
             <td class="px-4 py-3 text-right tabular-nums">{{ formatUsd(user.costUsd) }}</td>
             <td data-testid="last-run" class="px-4 py-3 whitespace-nowrap text-fg-muted">
@@ -191,16 +204,25 @@ onMounted(load)
             </td>
             <td class="px-4 py-3 text-right">
               <UserActionsMenu
-                v-if="user.id !== currentUser?.id"
                 :user="user"
+                :self="user.id === currentUser?.id"
                 :busy="busyId === user.id"
                 @select="(action) => select(user, action)"
+                @budget="budgetUser = user"
               />
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <SetBudgetDialog
+      v-if="budgetUser"
+      :key="budgetUser.id"
+      v-model:open="budgetOpen"
+      :user="budgetUser"
+      @saved="budgetSaved"
+    />
 
     <AppDialog
       v-if="confirming && confirmation"

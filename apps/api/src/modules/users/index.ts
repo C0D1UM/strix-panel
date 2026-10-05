@@ -4,6 +4,7 @@ import {
   AdminUserListResponse,
   AdminUserResponse,
   ErrorResponse,
+  SetBudgetBody,
   SetRoleBody,
   UserIdParams,
 } from './schema'
@@ -14,6 +15,7 @@ import {
   listUsers,
   removeUser,
   restoreUser,
+  setUserBudget,
   setUserRole,
 } from './service'
 
@@ -68,4 +70,11 @@ export const usersModule = new Elysia({ name: 'users', prefix: '/admin/users' })
     body: SetRoleBody,
     response,
     detail: { tags, summary: 'Make a user admin or remove admin (admin)' },
+  })
+  .patch('/:id/budget', ({ params, body }) => setUserBudget(params.id, body), {
+    requireRole: 'admin',
+    params: UserIdParams,
+    body: SetBudgetBody,
+    response: { 200: AdminUserResponse, 400: ErrorResponse, 404: ErrorResponse },
+    detail: { tags, summary: "Set a user's scan budget, including your own (admin)" },
   })

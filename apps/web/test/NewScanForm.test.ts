@@ -1,13 +1,39 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import NewScanForm from '../src/components/NewScanForm.vue'
 
 const post = vi.fn()
+const budgetGet = vi.fn()
 vi.mock('../src/lib/api', () => ({
-  api: { v1: { scans: { post: (body: unknown) => post(body) } } },
+  api: {
+    v1: {
+      scans: { post: (body: unknown) => post(body) },
+      me: { budget: { get: () => budgetGet() } },
+    },
+  },
 }))
 
-beforeEach(() => post.mockReset())
+const unlimited = {
+  limitUsd: null,
+  window: 'month',
+  spentUsd: 0,
+  remainingUsd: null,
+  minToStartUsd: 3,
+  windowStartsAt: '2026-10-01T00:00:00.000Z',
+  resetsAt: '2026-11-01T00:00:00.000Z',
+}
+const limited = (remainingUsd: number, limitUsd = 50) => ({
+  ...unlimited,
+  limitUsd,
+  remainingUsd,
+  spentUsd: limitUsd - remainingUsd,
+})
+
+beforeEach(() => {
+  post.mockReset()
+  budgetGet.mockReset()
+  budgetGet.mockResolvedValue({ data: unlimited, error: null })
+})
 
 test('shows target errors and does not submit an invalid form', async () => {
   const wrapper = mount(NewScanForm)
@@ -55,4 +81,51 @@ test('submits normalized targets, defaulting to deep mode with no budget', async
     maxBudgetUsd: undefined,
   })
   expect(wrapper.emitted('created')).toHaveLength(1)
+})
+
+test('shows what is left and caps the budget at it', async () => {
+  budgetGet.mockResolvedValue({ data: limited(12.4), error: null })
+  const wrapper = mount(NewScanForm)
+  await flushPromises()
+  expect(wrapper.find('[data-testid="budget-left"]').text()).toBe(
+    '$12.40 of $50.00 left this month · resets Nov 1',
+  )
+  const input = wrapper.find('input[type="number"]')
+  expect(input.attributes('placeholder')).toBe('Up to $12.40 (your remaining budget)')
+  await wrapper.find('textarea').setValue('https://example.com')
+  await input.setValue('13')
+  await wrapper.find('form').trigger('submit')
+  expect(wrapper.text()).toContain('At most $12.40 is left in your budget')
+  expect(post).not.toHaveBeenCalled()
+
+  post.mockResolvedValue({ data: { id: 's1' }, error: null })
+  await input.setValue('')
+  await wrapper.find('form').trigger('submit')
+  await vi.waitFor(() => expect(post).toHaveBeenCalled())
+  expect(post.mock.calls.at(-1)![0]).toMatchObject({ maxBudgetUsd: undefined })
+})
+
+test('cannot start below the minimum or with no budget', async () => {
+  budgetGet.mockResolvedValue({ data: limited(2), error: null })
+  const low = mount(NewScanForm)
+  await flushPromises()
+  expect(low.find('[data-testid="budget-blocked"]').text()).toBe(
+    'You need at least $3.00 of budget to start a scan',
+  )
+  expect(low.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+
+  budgetGet.mockResolvedValue({ data: limited(0, 0), error: null })
+  const none = mount(NewScanForm)
+  await flushPromises()
+  expect(none.find('[data-testid="budget-blocked"]').text()).toBe(
+    'Your account has no scan budget. Ask an admin.',
+  )
+})
+
+test('an unlimited budget changes nothing', async () => {
+  const wrapper = mount(NewScanForm)
+  await flushPromises()
+  expect(wrapper.find('[data-testid="budget-left"]').exists()).toBe(false)
+  expect(wrapper.find('[data-testid="budget-blocked"]').exists()).toBe(false)
+  expect(wrapper.find('input[type="number"]').attributes('placeholder')).toBe('No limit')
 })

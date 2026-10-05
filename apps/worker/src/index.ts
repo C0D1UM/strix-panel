@@ -15,6 +15,7 @@ const processScan = createScanProcessor({
   strixBin: env.STRIX_BIN,
   workDir: env.STRIX_WORK_DIR,
   pollIntervalMs: env.STRIX_POLL_INTERVAL_MS,
+  minScanBudgetUsd: env.MIN_SCAN_BUDGET_USD,
 })
 
 const worker = createScanWorker(env.DATABASE_URL, processScan, {
