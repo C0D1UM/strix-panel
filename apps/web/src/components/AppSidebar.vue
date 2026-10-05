@@ -41,6 +41,12 @@ const sections: NavSection[] = [
         adminOnly: true,
         badge: () => currentUser.value?.pendingUsers ?? 0,
       },
+      {
+        to: { name: 'admin-settings' },
+        label: 'Settings',
+        icon: 'icon-[lucide--settings]',
+        adminOnly: true,
+      },
     ],
   },
 ]

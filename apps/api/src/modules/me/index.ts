@@ -1,8 +1,8 @@
 import { remainingBudget, toRole } from '@strix-panel/shared'
 import { Elysia } from 'elysia'
 import { loadBudget } from '../../lib/budget'
-import { env } from '../../lib/env'
 import { authPlugin } from '../../plugins/auth'
+import { getSettings } from '../settings/service'
 import { countPendingUsers } from '../users/service'
 import { MeResponse, MyBudgetResponse } from './schema'
 
@@ -28,13 +28,13 @@ export const meModule = new Elysia({ name: 'me' })
   .get(
     '/me/budget',
     async ({ user }) => {
-      const budget = await loadBudget(user.id)
+      const [budget, settings] = await Promise.all([loadBudget(user.id), getSettings()])
       return {
         limitUsd: budget.limitUsd,
         window: budget.window,
         spentUsd: budget.spentUsd,
         remainingUsd: remainingBudget(budget.limitUsd, budget.spentUsd),
-        minToStartUsd: env.MIN_SCAN_BUDGET_USD,
+        minToStartUsd: settings.budget.minToStartUsd,
         windowStartsAt: budget.windowStartsAt?.toISOString() ?? null,
         resetsAt: budget.resetsAt?.toISOString() ?? null,
       }

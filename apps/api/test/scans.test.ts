@@ -4,10 +4,11 @@ import { createReportWorker } from '@strix-panel/db/queue'
 import type { BudgetWindow } from '@strix-panel/shared'
 import { reportPdfPath } from '@strix-panel/shared/env'
 import { eq } from 'drizzle-orm'
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { db } from '../src/lib/db'
 import { env } from '../src/lib/env'
 import { reportQueue, scanQueue } from '../src/lib/queue'
+import { updateSettings } from '../src/modules/settings/service'
 import { request, signUp } from './helpers'
 
 let admin: string
@@ -440,6 +441,9 @@ describe('POST /api/v1/scans/:id/resume', () => {
 })
 
 describe('user budget', () => {
+  afterEach(async () => {
+    await db.delete(schema.setting)
+  })
   const setBudget = (budgetUsd: number | null, budgetWindow: BudgetWindow = 'month') =>
     db
       .update(schema.user)
@@ -497,6 +501,23 @@ describe('user budget', () => {
 
     await setBudget(null)
     expect((await create(alice, { maxBudgetUsd: 1000 })).res.status).toBe(201)
+  })
+
+  test('the minimum comes from Admin → Settings', async () => {
+    await setBudget(10)
+    await spend(8)
+    await updateSettings({ budget: { minToStartUsd: 1 } }, null)
+    expect((await create(alice)).res.status).toBe(201)
+    await updateSettings({ budget: { minToStartUsd: 5 } }, null)
+    const low = await create(alice)
+    expect(low.res.status).toBe(403)
+    expect((low.scan.error as { message: string }).message).toContain('at least $5.00')
+    const me = await request('/api/v1/me/budget', { headers: { cookie: alice } })
+    expect(((await me.json()) as { minToStartUsd: number }).minToStartUsd).toBe(5)
+    const config = await request('/api/v1/config')
+    expect(((await config.json()) as { budget: { minToStartUsd: number } }).budget).toEqual({
+      minToStartUsd: 5,
+    })
   })
 
   test('resume needs the minimum too', async () => {

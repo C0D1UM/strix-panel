@@ -4,8 +4,6 @@ x-app-env: &app-env
   DATABASE_URL: postgres://${POSTGRES_USER:-strix}:${POSTGRES_PASSWORD:-strix}@postgres:5432/${POSTGRES_DB:-strix_panel}
   # PDF reports: written by the worker, served by the api (the `reports` volume).
   REPORT_DIR: /app/reports
-  # Budget a user with a limit must have left to start a scan: checked by the api and again by the worker.
-  MIN_SCAN_BUDGET_USD: ${MIN_SCAN_BUDGET_USD:-3}
 
 services:
   postgres:
@@ -45,8 +43,6 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       AUTH_EMAIL_PASSWORD_ENABLED: ${AUTH_EMAIL_PASSWORD_ENABLED:-true}
-      AUTH_REGISTRATION_ENABLED: ${AUTH_REGISTRATION_ENABLED:-true}
-      AUTH_AUTO_APPROVE_USERS: ${AUTH_AUTO_APPROVE_USERS:-true}
       ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-}
       SHOW_POWERED_BY_CODIUM: ${SHOW_POWERED_BY_CODIUM:-false}
     volumes:

@@ -1,6 +1,6 @@
 import { Type } from '@sinclair/typebox'
 import { devDatabaseUrl } from '@strix-panel/db'
-import { DEFAULT_MIN_SCAN_BUDGET_USD, DEFAULT_REPORT_DIR, parseEnv } from '@strix-panel/shared/env'
+import { DEFAULT_REPORT_DIR, parseEnv } from '@strix-panel/shared/env'
 
 const schema = Type.Object({
   NODE_ENV: Type.String({ default: 'development' }),
@@ -20,8 +20,6 @@ const schema = Type.Object({
   // Python interpreter of the Strix install, used to render PDF reports with Strix's own renderer. Empty turns PDF
   // reports off (a binary install of Strix has no Python to call). The worker image sets it.
   STRIX_PYTHON: Type.String({ default: '' }),
-  // What a user with a budget must have left (USD) when their scan starts. Must match the API's.
-  MIN_SCAN_BUDGET_USD: Type.Number({ minimum: 0, default: DEFAULT_MIN_SCAN_BUDGET_USD }),
   // Rendered PDFs, read back by the API. Must be the same directory as the API's REPORT_DIR.
   REPORT_DIR: Type.String({ default: DEFAULT_REPORT_DIR }),
 })

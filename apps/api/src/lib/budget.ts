@@ -1,11 +1,11 @@
 import { getUserBudget, type UserBudget } from '@strix-panel/db/budget'
+import { getSettings } from '@strix-panel/db/settings'
 import {
   BUDGET_WINDOW_CLOSED_MESSAGE,
   checkScanBudget,
   isBeforeBudgetWindow,
 } from '@strix-panel/shared'
 import { db } from './db'
-import { env } from './env'
 import { ForbiddenError, NotFoundError } from './errors'
 
 export async function loadBudget(userId: string): Promise<UserBudget> {
@@ -14,11 +14,11 @@ export async function loadBudget(userId: string): Promise<UserBudget> {
   return budget
 }
 
-// Starting or resuming a scan needs MIN_SCAN_BUDGET_USD left, for users with a budget. `userId` is the scan's
+// Starting or resuming a scan needs the minimum from Admin → Settings left, for users with a budget. `userId` is the scan's
 // owner: their budget pays for it, whoever clicks.
 export async function assertCanStartScan(userId: string, viewerId = userId): Promise<UserBudget> {
-  const budget = await loadBudget(userId)
-  const check = checkScanBudget({ ...budget, minUsd: env.MIN_SCAN_BUDGET_USD })
+  const [budget, settings] = await Promise.all([loadBudget(userId), getSettings(db)])
+  const check = checkScanBudget({ ...budget, minUsd: settings.budget.minToStartUsd })
   if (!check.ok) {
     const message =
       viewerId === userId ? check.message : "The scan's owner doesn't have enough budget left"

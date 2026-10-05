@@ -39,7 +39,11 @@ async function createScan(status: 'queued' | 'running' = 'queued') {
   return scan!
 }
 
-async function processor(scenario: string, reuseWorkDir?: string) {
+async function processor(
+  scenario: string,
+  reuseWorkDir?: string,
+  minScanBudgetUsd = async () => 3,
+) {
   const workDir = reuseWorkDir ?? (await mkdtemp(join(tmpdir(), 'strix-worker-')))
   const removed: string[] = []
   const sandboxes: Sandboxes = {
@@ -52,7 +56,7 @@ async function processor(scenario: string, reuseWorkDir?: string) {
     strixBin: FAKE_STRIX,
     workDir,
     pollIntervalMs: 100,
-    minScanBudgetUsd: 3,
+    minScanBudgetUsd,
     env: { ...strixEnv(), FAKE_STRIX_SCENARIO: scenario },
     sigtermAfterMs: 2000,
     sigkillAfterMs: 4000,
@@ -282,13 +286,29 @@ describe('user budget', () => {
         strixBin: FAKE_STRIX,
         workDir,
         pollIntervalMs: 100,
-        minScanBudgetUsd: 0,
+        minScanBudgetUsd: async () => 0,
         env: { ...strixEnv(), FAKE_STRIX_SCENARIO: 'completed' },
       })
       return { workDir, process: (id: string) => p({ id, data: { scanId: id } } as ScanJob) }
     })()
     await process(scan.id)
     expect((await load(scan.id))!.status).toBe('failed')
+    expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)
+  })
+
+  test('reads the minimum when the scan starts', async () => {
+    await setBudget(4)
+    const scan = await createScan()
+    let reads = 0
+    const { workDir, process } = await processor('completed', undefined, async () => {
+      reads++
+      return 5
+    })
+    await process(scan.id)
+    expect(reads).toBe(1)
+    expect((await load(scan.id))!.error).toBe(
+      'Not enough budget left to start the scan ($4.00 left, $5.00 needed)',
+    )
     expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)
   })
 

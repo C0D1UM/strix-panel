@@ -1,19 +1,23 @@
 import { Elysia } from 'elysia'
 import { enabledAuthProviders } from '../../lib/auth'
 import { env } from '../../lib/env'
+import { getSettings } from '../settings/service'
 import { PublicConfigResponse } from './schema'
 
 // Unauthenticated: the login page reads which sign-in methods and credits to show.
 export const configModule = new Elysia({ name: 'config' }).get(
   '/config',
-  () => ({
-    auth: {
-      providers: [...enabledAuthProviders],
-      registrationEnabled: env.AUTH_REGISTRATION_ENABLED,
-    },
-    branding: { showPoweredBy: env.SHOW_POWERED_BY_CODIUM },
-    budget: { minToStartUsd: env.MIN_SCAN_BUDGET_USD },
-  }),
+  async () => {
+    const settings = await getSettings()
+    return {
+      auth: {
+        providers: [...enabledAuthProviders],
+        registrationEnabled: settings.auth.registrationEnabled,
+      },
+      branding: { showPoweredBy: env.SHOW_POWERED_BY_CODIUM },
+      budget: { minToStartUsd: settings.budget.minToStartUsd },
+    }
+  },
   {
     response: PublicConfigResponse,
     detail: { tags: ['System'], summary: 'Public panel configuration' },

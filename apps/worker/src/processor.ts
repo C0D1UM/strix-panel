@@ -25,8 +25,8 @@ export interface ProcessorOptions {
   strixBin: string
   workDir: string
   pollIntervalMs: number
-  // MIN_SCAN_BUDGET_USD: what a user with a budget must have left when their scan starts.
-  minScanBudgetUsd: number
+  // What a user with a budget must have left when their scan starts (Admin → Settings), read at each start.
+  minScanBudgetUsd: () => Promise<number>
   // Environment for the Strix process. Defaults to ours minus DATABASE_URL: the agent must not see DB credentials.
   env?: Record<string, string | undefined>
   // Strix's Docker containers, removed once a scan ends. Defaults to the docker CLI.
@@ -180,9 +180,10 @@ export function createScanProcessor(options: ProcessorOptions) {
     if (scan.startedAt !== null && isBeforeBudgetWindow(budget.window, scan.createdAt)) {
       return fail(BUDGET_WINDOW_CLOSED_MESSAGE)
     }
-    if (!checkScanBudget({ ...budget, minUsd: options.minScanBudgetUsd }).ok) {
+    const minUsd = await options.minScanBudgetUsd()
+    if (!checkScanBudget({ ...budget, minUsd }).ok) {
       return fail(
-        `Not enough budget left to start the scan (${formatBudgetUsd(remaining)} left, ${formatBudgetUsd(options.minScanBudgetUsd)} needed)`,
+        `Not enough budget left to start the scan (${formatBudgetUsd(remaining)} left, ${formatBudgetUsd(minUsd)} needed)`,
       )
     }
     const cap = floorCents(Math.min(scan.maxBudgetUsd ?? Infinity, scan.costUsd + remaining))
