@@ -29,7 +29,7 @@ function amountError(value: unknown): string | null {
 }
 
 const inputClass =
-  'mt-1.5 block h-10 w-full rounded-md border border-line bg-surface-raised px-3 text-sm focus:border-accent focus:outline-none'
+  'block h-10 w-full rounded-md border border-line bg-surface-raised px-3 text-sm focus:border-accent focus:outline-none'
 
 const router = useRouter()
 const { toast } = useToast()
@@ -148,7 +148,9 @@ onUnmounted(() => {
 <template>
   <div class="mx-auto max-w-screen-lg px-4 py-10 sm:px-8">
     <h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
-    <p class="mt-1 text-sm text-fg-muted">Panel-wide settings. Changes apply right away.</p>
+    <p class="mt-1 text-sm text-fg-muted">
+      Settings for this Strix Panel instance, shared by everyone who uses it.
+    </p>
 
     <p v-if="loadError" role="alert" class="mt-6 text-sm text-danger">{{ loadError }}</p>
 
@@ -238,7 +240,7 @@ onUnmounted(() => {
                       step="0.01"
                       inputmode="decimal"
                       :class="inputClass"
-                      class="mt-0 pl-7"
+                      class="pl-7"
                       :aria-invalid="limitError !== null"
                     />
                   </span>
@@ -249,6 +251,7 @@ onUnmounted(() => {
                     v-model="draft.budget.newUserWindow"
                     data-testid="new-user-limit-window"
                     :class="inputClass"
+                    class="mt-1.5"
                   >
                     <option v-for="w in BUDGET_WINDOWS" :key="w" :value="w">
                       {{ WINDOW_LABELS[w] }}
@@ -292,7 +295,7 @@ onUnmounted(() => {
                   step="0.01"
                   inputmode="decimal"
                   :class="inputClass"
-                  class="mt-0 pl-7"
+                  class="pl-7"
                   :aria-invalid="minError !== null"
                 />
               </span>
