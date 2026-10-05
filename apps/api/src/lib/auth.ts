@@ -5,6 +5,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError } from 'better-auth/api'
 import { admin, openAPI } from 'better-auth/plugins'
 import { eq, sql } from 'drizzle-orm'
+import { getSettings } from '../modules/settings/service'
 import { lockAdmins } from './admin-lock'
 import { db } from './db'
 import { env } from './env'
@@ -16,7 +17,7 @@ function assertAllowedEmail(email: string) {
 }
 
 // Runs after the user insert has committed. The lock makes concurrent first sign-ups promote exactly one user.
-// The first admin is always approved, so AUTH_AUTO_APPROVE_USERS=false can't lock out a fresh install.
+// The first admin is always approved, so turning auto-approve off can't lock out a fresh install.
 export async function promoteIfFirstAdmin(userId: string) {
   await db.transaction(async (tx) => {
     await lockAdmins(tx)
@@ -50,16 +51,13 @@ export const auth = betterAuth({
       deletedAt: { type: 'date', required: false, input: false },
     },
   },
-  emailAndPassword: {
-    enabled: env.AUTH_EMAIL_PASSWORD_ENABLED,
-    disableSignUp: !env.AUTH_REGISTRATION_ENABLED,
-  },
+  // Registration is a runtime setting, enforced in the user create hook rather than with `disableSignUp`.
+  emailAndPassword: { enabled: env.AUTH_EMAIL_PASSWORD_ENABLED },
   socialProviders: env.AUTH_GOOGLE_ENABLED
     ? {
         google: {
           clientId: env.GOOGLE_CLIENT_ID,
           clientSecret: env.GOOGLE_CLIENT_SECRET,
-          disableSignUp: !env.AUTH_REGISTRATION_ENABLED,
         },
       }
     : {},
@@ -67,10 +65,18 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        before: async (user) => {
+        before: async (user, ctx) => {
           assertAllowedEmail(user.email)
+          const { auth: settings } = await getSettings()
+          // No endpoint context means the server created the user itself (db:seed), not a sign-up.
+          if (ctx && !settings.registrationEnabled) {
+            throw new APIError('FORBIDDEN', {
+              message: 'New accounts are disabled on this panel. Ask an admin for access.',
+              code: 'REGISTRATION_CLOSED',
+            })
+          }
           return {
-            data: { ...user, approvedAt: env.AUTH_AUTO_APPROVE_USERS ? new Date() : null },
+            data: { ...user, approvedAt: settings.autoApproveUsers ? new Date() : null },
           }
         },
         after: async (user) => {

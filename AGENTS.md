@@ -76,14 +76,16 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 - Change the schema, then `bun run db:generate`. Commit the generated SQL. Never edit a migration that has been applied anywhere — add a new one.
 - `src/schema/auth.ts` must match what Better Auth (core + admin plugin) expects. Check the Better Auth docs before changing it.
 - Only `src/queue.ts` imports `bullmq`. Pin BullMQ exactly: its Postgres backend is new (added in 6.3).
+- Runtime settings: one `setting` row per `<section>.<field>` key (jsonb value); a missing row means the default. Keys, types and defaults live in `packages/shared/src/settings.ts`. A new setting needs an entry there, a field in `apps/api/src/modules/settings/schema.ts`, and a row on `AdminSettingsPage`. Read them through `getSettings()` (no cache, so nothing goes stale across API replicas).
 - Live updates: writers call `notifyScanUpdate` after committing; the NOTIFY payload is only the scan id, listeners re-read the rows (`src/notify.ts`).
 
 ### Auth
 
 - Better Auth, configured in `apps/api/src/lib/auth.ts`. Defaults: in development, email+password on and Google off; in production, Google on and email+password off. `compose.yaml` overrides that to email+password on and Google off, so a fresh deployment works without an OAuth client. `BETTER_AUTH_URL` defaults to `http://localhost:<WEB_PORT>` in development and is required in production.
 - `ALLOWED_EMAIL_DOMAINS` is enforced at sign-up and on every new session.
-- `AUTH_REGISTRATION_ENABLED=false` (default `true`) blocks every new account, including the first one: email sign-up and first-time Google sign-in. Existing users still sign in, and `db:seed` still creates its admin.
-- `AUTH_AUTO_APPROVE_USERS=false` (default `true`) makes new users start pending (`user.approved_at` null): they can sign in and see the dashboard and scans, but creating or resuming a scan returns 403 `PENDING_APPROVAL` until an admin approves them on Admin → Users. Decided at sign-up; changing the flag never changes existing users. The first admin and the `db:seed` admin are always approved.
+- Registration and approval are runtime settings on Admin → Settings (`setting` table), not env. Both default to on.
+  - Registration off blocks every new account, including the first one: email sign-up and first-time Google sign-in (`REGISTRATION_CLOSED`, enforced in the `user.create.before` hook, not with Better Auth's boot-time `disableSignUp`). Existing users still sign in, and `db:seed` still creates its admin: it creates users outside a request, so the hook gets no endpoint context.
+  - Auto-approve off makes new users start pending (`user.approved_at` null): they can sign in and see the dashboard and scans, but creating or resuming a scan returns 403 `PENDING_APPROVAL` until an admin approves them on Admin → Users. Decided at sign-up; changing it never changes existing users. The first admin and the `db:seed` admin are always approved.
 - Admins manage users at `/api/v1/admin/users` (`src/modules/users`). Disable = Better Auth's `banned` (sign-in refused, sessions deleted). Remove = soft delete (`user.deleted_at`; sign-in refused in the `session.create` hook, sessions deleted, scans kept). Status comes from `userStatus()` in `packages/shared`. No one can act on their own account, and at least one active admin always remains (same advisory lock as `promoteIfFirstAdmin`). The admin plugin's own `/api/auth/admin/*` endpoints are not served (404 in `src/app.ts`) because they skip those guardrails.
 - The first user becomes admin (`promoteIfFirstAdmin`, serialized by an advisory lock).
 - Roles: `admin`, `user` (`packages/shared`).

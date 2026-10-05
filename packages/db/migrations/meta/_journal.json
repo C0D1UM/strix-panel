@@ -29,6 +29,13 @@
       "when": 1790368187424,
       "tag": "0003_approve_existing_users",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791223026709,
+      "tag": "0004_settings",
+      "breakpoints": true
     }
   ]
 }
