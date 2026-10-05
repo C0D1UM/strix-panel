@@ -14,6 +14,7 @@ Strix facts that shape the design:
 - Version: latest `strix-agent` 1.x at image build time (`docker/worker.Dockerfile`, build arg `STRIX_VERSION`, empty by default; pin one with `--build-arg STRIX_VERSION=1.6.2`). Developed against 1.6.2; the output file formats are not a public API, so a new minor can break parsing.
 - PDF reports come from Strix's own renderer, `generate_report_pdf` in `strix.interface.viewer.report_pdf` (behind `strix view`'s email button). It is internal, not a CLI flag, so the worker calls it through Strix's Python (`STRIX_PYTHON`, set by the worker image; empty turns PDFs off, as with the binary install of Strix, which has no Python to call).
 - Strix checks for a `docker` binary on `PATH` before it starts, then talks to the daemon through the socket. The worker image installs `docker-ce-cli` for that; it has no daemon of its own.
+- A local `.json`/`.yaml`/`.yml` file that is an OpenAPI 3, Swagger 2 or Postman v2.1 document is an `api_spec` target. Strix copies it to `$TMPDIR/strix_api_specs/<run_name>/` and bind-mounts that folder (only) at `/workspace/api-specs`. Bind sources are resolved by the Docker daemon on the host, not inside the worker, so the worker runs Strix with `TMPDIR=<STRIX_TMP_DIR>`, a path that is the same on the host and in the worker (a same-path host bind in `compose.yaml`; under `$HOME` in development, which Colima shares). `--resume` does not stage specs again, so the worker passes each file back with `--workspace-file <path>:api-specs/<name>` (file names can't contain `:`, which that flag splits on).
 
 ## Architecture
 
@@ -30,7 +31,7 @@ Bun workspaces monorepo. Bun is the runtime, package manager and test runner (we
 
 Request flow: browser → Caddy (`web` container) → `/api/*` reverse-proxied to `api`, everything else served from the SPA build. Same origin everywhere (Vite proxies `/api` in dev), so auth is a plain httpOnly session cookie — no CORS, no tokens in JS.
 
-Job flow: `api` inserts a `scan` row and enqueues `{ scanId }` on the `scans` queue → `worker` runs `strix -n` in `<STRIX_WORK_DIR>/<scanId>/` → every `STRIX_POLL_INTERVAL_MS` it reads `run.json`, `.state/agents.json` and `vulnerabilities.json` and writes usage, agents, findings and feed events to Postgres, then `pg_notify('scan_updates', scanId)` → `api` holds one `LISTEN` connection and pushes changes to browsers over SSE (`GET /api/v1/scans/:id/stream`). There is no Redis: BullMQ uses its Postgres backend (schema `bullmq`).
+Job flow: `api` inserts a `scan` row (writing uploaded spec files to `<UPLOAD_DIR>/<scanId>/<name>`, the `uploads` volume, read-only in the worker) and enqueues `{ scanId }` on the `scans` queue → `worker` runs `strix -n` in `<STRIX_WORK_DIR>/<scanId>/`, with one `-t` per target in the user's order (the URL, or the file's absolute path under `UPLOAD_DIR`) → every `STRIX_POLL_INTERVAL_MS` it reads `run.json`, `.state/agents.json` and `vulnerabilities.json` and writes usage, agents, findings and feed events to Postgres, then `pg_notify('scan_updates', scanId)` → `api` holds one `LISTEN` connection and pushes changes to browsers over SSE (`GET /api/v1/scans/:id/stream`). There is no Redis: BullMQ uses its Postgres backend (schema `bullmq`).
 
 PDF reports are rendered on demand, for completed scans only: `POST /api/v1/scans/:id/report-pdf` enqueues `{ scanId }` on the `reports` queue (job id = scan id) → the worker's second consumer (`apps/worker/src/report.ts`) runs Strix's renderer on the run dir and writes `<REPORT_DIR>/<scanId>.pdf` → the browser polls `GET …/report-pdf` (ready = the file exists; pending/failed come from the job) and then downloads `GET …/report.pdf`. `REPORT_DIR` is a cache shared by `worker` and `api`: in production an in-memory (tmpfs) volume, never on the host disk; files older than an hour are pruned on the next render, and a missing file is simply rendered again.
 
@@ -51,7 +52,7 @@ bun run db:generate    # after editing packages/db/src/schema/*
 docker compose up -d --build   # prod-like stack on :8080, built from source (images are tagged like the GHCR ones)
 ```
 
-Worktrees: each worktree gets its own dev Postgres (the Compose project is named after the folder). Give each a distinct `DB_PORT`, `API_PORT`, `WEB_PORT` and `WORKER_HEALTH_PORT` (via the shell or `.env`); `DATABASE_URL` and `BETTER_AUTH_URL` follow them automatically.
+Worktrees: each worktree gets its own dev Postgres (the Compose project is named after the folder). Give each a distinct `DB_PORT`, `API_PORT`, `WEB_PORT` and `WORKER_HEALTH_PORT` (via the shell or `.env`); `DATABASE_URL` and `BETTER_AUTH_URL` follow them automatically. Development uploads and Strix's temp files live in the worktree's `.data/` (gitignored).
 
 Tests need Postgres. They always use separate databases (`strix_panel_test_<package>`, created and migrated automatically by each test preload); they follow `DB_PORT`, or set `TEST_DATABASE_URL` to a base URL (the package suffix is appended).
 
@@ -114,7 +115,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 
 - Only `worker` gets the Docker socket and the Strix toolchain. Never mount `/var/run/docker.sock` into `api` or `web`.
 - Never log or return secrets: LLM keys, `BETTER_AUTH_SECRET`, OAuth secrets, session tokens.
-- Scan targets and instructions are user input that ends up on a command line. Pass them as an argv array (`Bun.spawn([...])`), never through a shell string. Targets are limited to 1–3 `http(s)` URLs: never accept local paths (they would be mounted into the sandbox).
+- Scan targets and instructions are user input that ends up on a command line. Pass them as an argv array (`Bun.spawn([...])`), never through a shell string. Targets are limited to 1–3, each an `http(s)` URL or an uploaded API spec file (`.json`/`.yaml`/`.yml`, ≤ 5 MB, content sniffed as a JSON/YAML object). Never accept a local path from the user (it would be mounted into the sandbox): file targets are stored by name only (`checkScanTargetFileName` in `packages/shared`) and the worker builds their path under `UPLOAD_DIR`.
 - Strix runs with the worker's environment minus `DATABASE_URL`, so the agent cannot see DB credentials.
 - Don't hand-edit the generated files: `packages/db/migrations/*`, `bun.lock`.
 
@@ -132,7 +133,7 @@ Commit messages are one short imperative sentence, capitalized, with no prefix o
 ## Glossary
 
 - **Run / scan**: one execution of the Strix CLI against one or more targets. Maps to one `strix_runs/<run_name>/` directory.
-- **Target**: what Strix tests. Strix accepts URLs, repos, local paths, domains and IPs; the panel only accepts `http(s)` URLs.
+- **Target**: what Strix tests. Strix accepts URLs, repos, local paths, domains and IPs; the panel accepts `http(s)` URLs and uploaded API spec files. `scan.targets` is a typed jsonb list (`ScanTarget` in `packages/shared`).
 - **Finding**: one vulnerability Strix reported (`vulnerabilities.json`), stored per scan in `scan_finding`.
 - **Budget cap**: an optional per-scan USD limit (`maxBudgetUsd`), passed to Strix as `--max-budget`.
 - **Admin**: a user with role `admin`. Sees every user's scans and usage (dashboard scope `all`).

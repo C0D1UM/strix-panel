@@ -9,21 +9,21 @@ import {
 } from '@strix-panel/db/queue'
 import {
   checkScanResume,
-  MAX_SCAN_TARGETS,
-  normalizeScanTarget,
   SCAN_TAB_STATUSES,
   SCAN_TABS,
   type ScanMode,
   type ScanStatus,
   type ScanTab,
 } from '@strix-panel/shared'
-import { reportPdfPath } from '@strix-panel/shared/env'
+import { reportPdfPath, scanUploadDir } from '@strix-panel/shared/env'
+import { rm } from 'node:fs/promises'
 import { and, asc, count, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm'
 import type { AuthUser } from '../../lib/auth'
 import { db } from '../../lib/db'
 import { env } from '../../lib/env'
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors'
+import { ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors'
 import { reportQueue, scanQueue } from '../../lib/queue'
+import { parseScanTargets, writeTargetFiles } from './target-files'
 
 type Viewer = Pick<AuthUser, 'id' | 'role'>
 type Scanner = Pick<AuthUser, 'id' | 'role' | 'approvedAt'>
@@ -32,7 +32,7 @@ type OwnerRow = { id: string; name: string; email: string; removed: boolean }
 
 export interface CreateScanInput {
   name?: string
-  targets: string[]
+  targets: (string | File)[]
   scanMode: ScanMode
   instruction?: string
   maxBudgetUsd?: number
@@ -101,43 +101,45 @@ async function findScan(viewer: Viewer, id: string) {
   return row
 }
 
-export function parseTargets(targets: string[]): string[] {
-  const normalized = targets.map((target) => {
-    const url = normalizeScanTarget(target)
-    if (!url) throw new BadRequestError('INVALID_TARGET', `Not an http(s) URL: ${target.trim()}`)
-    return url
-  })
-  const unique = [...new Set(normalized)]
-  if (unique.length > MAX_SCAN_TARGETS) {
-    throw new BadRequestError('INVALID_TARGET', `At most ${MAX_SCAN_TARGETS} targets per scan`)
-  }
-  return unique
-}
-
 export async function createScan(viewer: Scanner, input: CreateScanInput): Promise<ScanDto> {
   assertApproved(viewer)
-  const targets = parseTargets(input.targets)
-  const [row] = await db
-    .insert(schema.scan)
-    .values({
-      userId: viewer.id,
-      name: input.name?.trim() || null,
-      targets,
-      scanMode: input.scanMode,
-      instruction: input.instruction?.trim() || null,
-      maxBudgetUsd: input.maxBudgetUsd ?? null,
-    })
-    .returning()
+  const { targets, files } = await parseScanTargets(input.targets)
+  let uploadDir: string | null = null
+  let row: ScanRow
   try {
-    await enqueueScan(scanQueue, row!.id)
+    // Files are written inside the transaction: a failed write rolls the scan back.
+    row = await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(schema.scan)
+        .values({
+          userId: viewer.id,
+          name: input.name?.trim() || null,
+          targets,
+          scanMode: input.scanMode,
+          instruction: input.instruction?.trim() || null,
+          maxBudgetUsd: input.maxBudgetUsd ?? null,
+        })
+        .returning()
+      if (files.length > 0) {
+        uploadDir = scanUploadDir(env.UPLOAD_DIR, inserted!.id)
+        await writeTargetFiles(uploadDir, files)
+      }
+      return inserted!
+    })
+  } catch (error) {
+    if (uploadDir) await rm(uploadDir, { recursive: true, force: true })
+    throw error
+  }
+  try {
+    await enqueueScan(scanQueue, row.id)
   } catch (error) {
     await db
       .update(schema.scan)
       .set({ status: 'failed', error: 'Could not enqueue the scan', finishedAt: new Date() })
-      .where(eq(schema.scan.id, row!.id))
+      .where(eq(schema.scan.id, row.id))
     throw error
   }
-  return getScan(viewer, row!.id)
+  return getScan(viewer, row.id)
 }
 
 export async function getScan(viewer: Viewer, id: string): Promise<ScanDto> {
@@ -160,7 +162,7 @@ function searchScans(q: string | undefined): SQL | undefined {
   const text = q?.trim()
   if (!text) return undefined
   const pattern = likePattern(text)
-  return sql`(${schema.scan.name} ilike ${pattern} or exists (select 1 from unnest(${schema.scan.targets}) as target where target ilike ${pattern}))`
+  return sql`(${schema.scan.name} ilike ${pattern} or exists (select 1 from jsonb_array_elements(${schema.scan.targets}) as target where coalesce(target->>'value', target->>'name') ilike ${pattern}))`
 }
 
 export async function listScans(viewer: Viewer, filters: ListScansFilters) {

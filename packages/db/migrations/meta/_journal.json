@@ -29,6 +29,20 @@
       "when": 1790368187424,
       "tag": "0003_approve_existing_users",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791226196472,
+      "tag": "0004_scan_targets_typed",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791226213030,
+      "tag": "0005_scan_targets_jsonb",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,11 @@
 import { Type } from '@sinclair/typebox'
 import { devDatabaseUrl } from '@strix-panel/db'
-import { DEFAULT_REPORT_DIR, parseEnv, splitList } from '@strix-panel/shared/env'
+import {
+  DEFAULT_REPORT_DIR,
+  DEFAULT_UPLOAD_DIR,
+  parseEnv,
+  splitList,
+} from '@strix-panel/shared/env'
 
 const schema = Type.Object({
   NODE_ENV: Type.Union(
@@ -32,6 +37,8 @@ const schema = Type.Object({
   SHOW_POWERED_BY_CODIUM: Type.Boolean({ default: false }),
   // PDF reports rendered by the worker. Must be the same directory as the worker's REPORT_DIR.
   REPORT_DIR: Type.String({ default: DEFAULT_REPORT_DIR }),
+  // Uploaded spec files (scan targets). Must be the same directory as the worker's UPLOAD_DIR.
+  UPLOAD_DIR: Type.String({ default: DEFAULT_UPLOAD_DIR }),
   // Local-only admin created by `bun run db:seed`.
   SEED_ADMIN_EMAIL: Type.String({ default: 'admin@example.com' }),
   SEED_ADMIN_PASSWORD: Type.String({ minLength: 8, default: 'P@ssw0rd' }),

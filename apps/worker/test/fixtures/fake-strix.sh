@@ -8,6 +8,9 @@ run=strix_runs/example-com_ab12
 mkdir -p "$run/.state"
 printf '%s\n' "$@" > argv.txt
 printf '%s\n' "${STRIX_RUN_ID:-}" "${STRIX_RUN_TYPE:-}" > labels.txt
+printf '%s\n' "${TMPDIR:-}" > tmpdir.txt
+# Strix stages API spec files under $TMPDIR/strix_api_specs/<run_name>; the worker removes that folder afterwards.
+if [ -n "${TMPDIR:-}" ]; then mkdir -p "$TMPDIR/strix_api_specs/example-com_ab12"; fi
 
 write_run() {
   cat > "$run/run.json" <<JSON

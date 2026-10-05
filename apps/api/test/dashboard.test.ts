@@ -41,7 +41,7 @@ interface ScanSeed {
 const insertScan = (owner: string, seed: ScanSeed = {}) =>
   db.insert(schema.scan).values({
     userId: owner,
-    targets: ['https://example.com/'],
+    targets: [{ type: 'url', value: 'https://example.com/' }],
     scanMode: 'quick',
     status: 'completed',
     ...seed,

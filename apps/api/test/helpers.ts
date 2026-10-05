@@ -5,7 +5,7 @@ export const ORIGIN = 'http://localhost:5173'
 export function request(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   headers.set('origin', ORIGIN)
-  if (init.body) headers.set('content-type', 'application/json')
+  if (typeof init.body === 'string') headers.set('content-type', 'application/json')
   return app.handle(new Request(`${ORIGIN}${path}`, { ...init, headers }))
 }
 

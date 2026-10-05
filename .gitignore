@@ -8,5 +8,6 @@ coverage/
 *.log
 .DS_Store
 strix_runs/
+.data/
 .vite/
 *.tsbuildinfo

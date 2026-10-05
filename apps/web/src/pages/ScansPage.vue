@@ -4,10 +4,12 @@ import {
   isFinishedScanStatus,
   SCAN_TABS,
   type ScanTab,
+  scanTargetLabel,
 } from '@strix-panel/shared'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import NewScanDialog from '../components/NewScanDialog.vue'
 import ScanStatusBadge from '../components/ScanStatusBadge.vue'
+import ScanTargetLabel from '../components/ScanTargetLabel.vue'
 import SeverityBadge from '../components/SeverityBadge.vue'
 import AppButton from '../components/ui/AppButton.vue'
 import { api } from '../lib/api'
@@ -240,10 +242,10 @@ onBeforeUnmount(() => {
                 {{ scanTitle(scan) }}
               </RouterLink>
               <p
-                class="mt-0.5 max-w-xs truncate text-xs text-fg-muted"
-                :title="scan.targets.join('\n')"
+                class="mt-0.5 flex max-w-xs gap-2 overflow-hidden text-xs text-fg-muted"
+                :title="scan.targets.map(scanTargetLabel).join('\n')"
               >
-                {{ scan.targets.join(', ') }}
+                <ScanTargetLabel v-for="(target, i) in scan.targets" :key="i" :target="target" />
               </p>
             </td>
             <td class="px-4 py-3"><ScanStatusBadge :status="scan.status" /></td>

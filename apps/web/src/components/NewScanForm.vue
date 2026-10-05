@@ -2,14 +2,15 @@
 import { SCAN_MODES, type ScanMode } from '@strix-panel/shared'
 import { computed, ref } from 'vue'
 import { api } from '../lib/api'
-import { parseTargetsInput } from '../lib/scan-targets'
+import { newTargetRow, validateTargetRows, type TargetRow } from '../lib/scan-targets'
 import { SCAN_MODE_HINTS, type Scan } from '../lib/scans'
+import ScanTargetsInput from './ScanTargetsInput.vue'
 import AppButton from './ui/AppButton.vue'
 
 const emit = defineEmits<{ created: [scan: Scan] }>()
 
 const name = ref('')
-const targetsText = ref('')
+const targetRows = ref<TargetRow[]>([newTargetRow()])
 const scanMode = ref<ScanMode>('deep')
 const instruction = ref('')
 // v-model on a number input yields a number (or '' when empty).
@@ -18,7 +19,7 @@ const submitting = ref(false)
 const error = ref<string | null>(null)
 const touched = ref(false)
 
-const parsed = computed(() => parseTargetsInput(targetsText.value))
+const parsed = computed(() => validateTargetRows(targetRows.value))
 const budgetValue = computed(() =>
   String(budget.value).trim() === '' ? null : Number(budget.value),
 )
@@ -35,12 +36,15 @@ async function submit() {
   if (!canSubmit.value || submitting.value) return
   submitting.value = true
   error.value = null
+  const trimmedName = name.value.trim()
+  const trimmedInstruction = instruction.value.trim()
   const { data, error: err } = await api.v1.scans.post({
-    name: name.value.trim() || undefined,
     targets: parsed.value.targets,
     scanMode: scanMode.value,
-    instruction: instruction.value.trim() || undefined,
-    maxBudgetUsd: budgetValue.value ?? undefined,
+    // Unset fields are left out, not undefined: in a multipart request Eden would send them as "undefined".
+    ...(trimmedName && { name: trimmedName }),
+    ...(trimmedInstruction && { instruction: trimmedInstruction }),
+    ...(budgetValue.value !== null && { maxBudgetUsd: budgetValue.value }),
   })
   submitting.value = false
   if (err || !data) {
@@ -59,20 +63,14 @@ async function submit() {
       <input v-model="name" maxlength="120" :class="inputClass" class="h-10" />
     </label>
 
-    <label class="block text-sm font-medium">
-      Targets
-      <textarea
-        v-model="targetsText"
-        rows="3"
-        required
-        placeholder="https://staging.example.com&#10;One URL per line, up to 3"
-        spellcheck="false"
-        :class="inputClass"
-        class="py-2 font-mono"
-        :aria-invalid="touched && parsed.errors.length > 0"
+    <fieldset>
+      <legend class="text-sm font-medium">Targets</legend>
+      <ScanTargetsInput
+        v-model="targetRows"
+        :invalid="touched && parsed.errors.length > 0"
         @blur="touched = true"
       />
-    </label>
+    </fieldset>
     <ul v-if="touched && parsed.errors.length > 0" class="-mt-2 space-y-0.5 text-sm text-danger">
       <li v-for="message in parsed.errors" :key="message" data-testid="target-error">
         {{ message }}

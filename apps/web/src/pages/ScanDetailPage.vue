@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ReportDownloadMenu from '../components/ReportDownloadMenu.vue'
 import ScanAgentTree from '../components/ScanAgentTree.vue'
 import ScanStatusBadge from '../components/ScanStatusBadge.vue'
+import ScanTargetLabel from '../components/ScanTargetLabel.vue'
 import SeverityBadge from '../components/SeverityBadge.vue'
 import AppButton from '../components/ui/AppButton.vue'
 import { useScanStream } from '../composables/useScanStream'
@@ -160,8 +161,8 @@ const codeLocations = (report: Record<string, unknown>): string[] => {
             <ScanStatusBadge :status="scan.status" />
           </div>
           <ul class="mt-2 space-y-0.5 text-sm text-fg-muted">
-            <li v-for="target in scan.targets" :key="target" class="truncate font-mono">
-              {{ target }}
+            <li v-for="(target, i) in scan.targets" :key="i" class="flex font-mono">
+              <ScanTargetLabel :target="target" />
             </li>
           </ul>
           <p class="mt-2 text-xs text-fg-muted">

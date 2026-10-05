@@ -27,10 +27,15 @@ export const ScanOwner = t.Object({
   removed: t.Boolean(),
 })
 
+export const ScanTargetSchema = t.Union([
+  t.Object({ type: t.Literal('url'), value: t.String() }),
+  t.Object({ type: t.Literal('file'), name: t.String() }),
+])
+
 export const ScanResponse = t.Object({
   id: t.String(),
   name: t.Nullable(t.String()),
-  targets: t.Array(t.String()),
+  targets: t.Array(ScanTargetSchema),
   scanMode: t.UnionEnum(SCAN_MODES),
   instruction: t.Nullable(t.String()),
   maxBudgetUsd: t.Nullable(t.Number()),
@@ -60,13 +65,16 @@ export const ScanResponse = t.Object({
 
 export const CreateScanBody = t.Object({
   name: t.Optional(t.String({ maxLength: MAX_SCAN_NAME_LENGTH })),
-  targets: t.Array(t.String({ minLength: 1, maxLength: 2048 }), {
+  targets: t.Array(t.Union([t.String({ minLength: 1, maxLength: 2048 }), t.File()]), {
     minItems: 1,
     maxItems: MAX_SCAN_TARGETS,
+    description:
+      'In order: http(s) URLs and API spec files (.json, .yaml, .yml; OpenAPI, Swagger or Postman). Send multipart/form-data, repeating the targets field, when a file is included.',
   }),
   scanMode: t.UnionEnum(SCAN_MODES),
   instruction: t.Optional(t.String({ maxLength: MAX_SCAN_INSTRUCTION_LENGTH })),
-  maxBudgetUsd: t.Optional(t.Number({ exclusiveMinimum: 0, maximum: 100_000 })),
+  // Numeric: multipart sends every field as a string.
+  maxBudgetUsd: t.Optional(t.Numeric({ exclusiveMinimum: 0, maximum: 100_000 })),
 })
 
 export const ScanIdParams = t.Object({ id: t.String({ format: 'uuid' }) })
@@ -75,7 +83,10 @@ export const ListScansQuery = t.Object({
   page: t.Optional(t.Integer({ minimum: 1, default: 1 })),
   pageSize: t.Optional(t.Integer({ minimum: 1, maximum: 100, default: 20 })),
   q: t.Optional(
-    t.String({ maxLength: 200, description: 'Matches the scan name or any target, any case' }),
+    t.String({
+      maxLength: 200,
+      description: 'Matches the scan name, any target URL or file name, any case',
+    }),
   ),
   // A Union of Literals, not UnionEnum: an optional UnionEnum query param defaults to its first value.
   tab: t.Optional(t.Union(SCAN_TABS.map((tab) => t.Literal(tab)))),

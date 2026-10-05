@@ -1,8 +1,10 @@
 import { schema } from '@strix-panel/db'
 import { notifyScanUpdate } from '@strix-panel/db/notify'
 import { createReportWorker } from '@strix-panel/db/queue'
-import { reportPdfPath } from '@strix-panel/shared/env'
+import { reportPdfPath, scanTargetFilePath } from '@strix-panel/shared/env'
 import { eq } from 'drizzle-orm'
+import { rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { db } from '../src/lib/db'
 import { env } from '../src/lib/env'
@@ -50,7 +52,10 @@ describe('POST /api/v1/scans', () => {
     expect(res.status).toBe(201)
     expect(scan).toMatchObject({
       name: 'Shop',
-      targets: ['https://example.com/', 'http://localhost:8080/app'],
+      targets: [
+        { type: 'url', value: 'https://example.com/' },
+        { type: 'url', value: 'http://localhost:8080/app' },
+      ],
       scanMode: 'quick',
       status: 'queued',
       maxBudgetUsd: 2.5,
@@ -86,6 +91,87 @@ describe('POST /api/v1/scans', () => {
   test('requires a session', async () => {
     const res = await request('/api/v1/scans', { method: 'POST', body: body() })
     expect(res.status).toBe(401)
+  })
+})
+
+async function createForm(
+  cookie: string,
+  targets: (string | File)[],
+  fields: Record<string, string> = {},
+) {
+  const form = new FormData()
+  for (const target of targets) form.append('targets', target)
+  form.append('scanMode', 'quick')
+  for (const [key, value] of Object.entries(fields)) form.append(key, value)
+  const res = await request('/api/v1/scans', { method: 'POST', body: form, headers: { cookie } })
+  return { res, scan: (await res.json()) as Record<string, unknown> & { id: string } }
+}
+const SPEC = 'openapi: 3.0.0\ninfo: { title: Pets, version: "1" }\npaths: {}\n'
+const scanCount = async () => (await db.select().from(schema.scan)).length
+
+describe('POST /api/v1/scans with spec files', () => {
+  test('stores URLs and files in the given order and writes the file', async () => {
+    const { res, scan } = await createForm(
+      alice,
+      ['https://a.example', new File([SPEC], 'pets.yaml'), 'https://b.example'],
+      { maxBudgetUsd: '2.5' },
+    )
+    expect(res.status).toBe(201)
+    expect(scan.targets).toEqual([
+      { type: 'url', value: 'https://a.example/' },
+      { type: 'file', name: 'pets.yaml' },
+      { type: 'url', value: 'https://b.example/' },
+    ])
+    expect(scan.maxBudgetUsd).toBe(2.5)
+    expect(await Bun.file(scanTargetFilePath(env.UPLOAD_DIR, scan.id, 'pets.yaml')).text()).toBe(
+      SPEC,
+    )
+  })
+
+  test('accepts a single uploaded file', async () => {
+    const { res, scan } = await createForm(alice, [new File(['{"openapi":"3.0.0"}'], 'api.json')])
+    expect(res.status).toBe(201)
+    expect(scan.targets).toEqual([{ type: 'file', name: 'api.json' }])
+  })
+
+  test('rejects a bad file without creating a scan', async () => {
+    const { res, scan } = await createForm(alice, [
+      'https://a.example',
+      new File(['<html></html>'], 'x.yaml'),
+    ])
+    expect(res.status).toBe(400)
+    expect((scan.error as { code: string }).code).toBe('INVALID_TARGET_FILE')
+    expect(await scanCount()).toBe(0)
+  })
+
+  test('rejects four targets across URLs and files', async () => {
+    const files = ['a', 'b'].map((n) => new File(['{}'], `${n}.json`))
+    const { res } = await createForm(alice, ['https://a.example', 'https://b.example', ...files])
+    expect(res.status).toBe(422)
+    expect(await scanCount()).toBe(0)
+  })
+
+  test('rolls the scan back when the file cannot be written', async () => {
+    const original = env.UPLOAD_DIR
+    const blocker = join(original, 'not-a-dir')
+    await writeFile(blocker, 'x')
+    env.UPLOAD_DIR = blocker
+    try {
+      const { res } = await createForm(alice, [new File([SPEC], 'pets.yaml')])
+      expect(res.status).toBe(500)
+      expect(await scanCount()).toBe(0)
+    } finally {
+      env.UPLOAD_DIR = original
+      await rm(blocker, { force: true })
+    }
+  })
+
+  test('search matches uploaded file names', async () => {
+    const pets = await createForm(alice, [new File([SPEC], 'petstore-v2.yaml')])
+    await create(alice, { targets: ['https://other.example'] })
+    const res = await request('/api/v1/scans?q=PETSTORE', { headers: { cookie: alice } })
+    const found = (await res.json()) as { items: { id: string }[] }
+    expect(found.items.map((s) => s.id)).toEqual([pets.scan.id])
   })
 })
 

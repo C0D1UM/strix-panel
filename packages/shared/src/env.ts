@@ -2,6 +2,7 @@ import type { Static, TObject } from '@sinclair/typebox'
 import { Value } from '@sinclair/typebox/value'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // Validates env vars against a TypeBox schema: applies defaults, coerces strings to numbers/booleans,
 // and throws one readable error listing every invalid variable. `defaults` fill in variables that are
@@ -33,3 +34,17 @@ export function splitList(value: string): string[] {
 export const DEFAULT_REPORT_DIR = join(tmpdir(), 'strix-panel-reports')
 
 export const reportPdfPath = (reportDir: string, scanId: string) => join(reportDir, `${scanId}.pdf`)
+
+// The repo root. Development keeps uploads and Strix's temp files here: durable (unlike the OS temp dir) and under
+// $HOME, the only host folder Colima shares with the Docker daemon by default.
+const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
+
+// Uploaded spec files, written by the API and read by the worker. Production mounts the `uploads` volume.
+export const DEFAULT_UPLOAD_DIR = join(REPO_ROOT, '.data', 'uploads')
+// TMPDIR for Strix. Strix stages spec files here and bind-mounts them into its sandbox, so the Docker daemon must see
+// this path too. Production binds the same host path into the worker.
+export const DEFAULT_STRIX_TMP_DIR = join(REPO_ROOT, '.data', 'strix-tmp')
+
+export const scanUploadDir = (uploadDir: string, scanId: string) => join(uploadDir, scanId)
+export const scanTargetFilePath = (uploadDir: string, scanId: string, name: string) =>
+  join(uploadDir, scanId, name)

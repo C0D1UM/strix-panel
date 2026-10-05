@@ -1,0 +1,1 @@
+ALTER TABLE "scan" ALTER COLUMN "targets" SET DATA TYPE jsonb;

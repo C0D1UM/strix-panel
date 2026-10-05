@@ -3,9 +3,10 @@
 // `strix --resume`. The only place in the panel that starts Strix.
 import type { ScanJob } from '@strix-panel/db/queue'
 import { isFinishedScanStatus } from '@strix-panel/shared'
+import { scanTargetFilePath } from '@strix-panel/shared/env'
 import { createWriteStream } from 'node:fs'
-import { mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, rm } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { createDockerSandboxes, removeSandboxes, SANDBOX_RUN_TYPE, type Sandboxes } from './sandbox'
 import type { ScanRow, ScanStore } from './scan-store'
 import { buildStrixArgs } from './strix/args'
@@ -16,6 +17,11 @@ export interface ProcessorOptions {
   store: ScanStore
   strixBin: string
   workDir: string
+  // Uploaded spec files: UPLOAD_DIR/<scanId>/<name>.
+  uploadDir: string
+  // TMPDIR for Strix. It stages spec files there and bind-mounts them into the sandbox, so the Docker daemon must
+  // resolve this path to the same folder.
+  tmpDir: string
   pollIntervalMs: number
   // Environment for the Strix process. Defaults to ours minus DATABASE_URL: the agent must not see DB credentials.
   env?: Record<string, string | undefined>
@@ -38,6 +44,17 @@ export function createScanProcessor(options: ProcessorOptions) {
   const { store, sigtermAfterMs = 30_000, sigkillAfterMs = 60_000 } = options
   const env = options.env ?? strixEnv()
   const sandboxes = options.sandboxes ?? createDockerSandboxes()
+  const tmpDir = resolve(options.tmpDir)
+
+  // Strix copies a run's spec files to TMPDIR/strix_api_specs/<runName> and leaves them there.
+  async function removeSpecStaging(scanId: string) {
+    const runName = (await store.get(scanId))?.runName
+    if (!runName) return
+    await rm(join(tmpDir, 'strix_api_specs', runName), { recursive: true, force: true }).catch(
+      (error: Error) =>
+        console.error(`[worker] scan ${scanId}: spec staging cleanup failed: ${error.message}`),
+    )
+  }
 
   async function run(scan: ScanRow): Promise<void> {
     const cwd = join(options.workDir, scan.id)
@@ -64,15 +81,29 @@ export function createScanProcessor(options: ProcessorOptions) {
       state.runDir = runDir
     }
 
+    // Fresh and resumed runs alike pass every uploaded file to Strix.
+    for (const target of scan.targets) {
+      if (target.type !== 'file') continue
+      if (await Bun.file(scanTargetFilePath(options.uploadDir, scan.id, target.name)).exists()) {
+        continue
+      }
+      await store.setStatus(scan.id, 'failed', 'Scan failed', {
+        error: `An uploaded target file is missing: ${target.name}`,
+        finishedAt: new Date(),
+      })
+      return
+    }
+    await mkdir(tmpDir, { recursive: true })
+
     // Appended, so a resumed scan keeps the output of its earlier attempts.
     const log = createWriteStream(join(cwd, 'strix.log'), { flags: 'a' })
     if (scan.runName !== null) log.write(`\n--- resumed ${new Date().toISOString()} ---\n`)
     const tail: string[] = []
 
-    const proc = Bun.spawn(buildStrixArgs(options.strixBin, scan), {
+    const proc = Bun.spawn(buildStrixArgs(options.strixBin, scan, options.uploadDir), {
       cwd,
-      // Strix labels its sandbox containers with these, so they can be found and removed afterwards.
-      env: { ...env, STRIX_RUN_ID: scan.id, STRIX_RUN_TYPE: SANDBOX_RUN_TYPE },
+      // Strix labels its sandbox containers with STRIX_RUN_*, so they can be found and removed afterwards.
+      env: { ...env, TMPDIR: tmpDir, STRIX_RUN_ID: scan.id, STRIX_RUN_TYPE: SANDBOX_RUN_TYPE },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -179,6 +210,7 @@ export function createScanProcessor(options: ProcessorOptions) {
     } finally {
       // Whatever the outcome: completed, failed, stopped or a crash in our own code.
       await removeSandboxes(sandboxes, scan.id)
+      await removeSpecStaging(scan.id)
     }
   }
 }
