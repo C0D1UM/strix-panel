@@ -9,8 +9,10 @@ import {
 } from '@strix-panel/db/queue'
 import {
   checkScanResume,
+  formatBudgetUsd,
   MAX_SCAN_TARGETS,
   normalizeScanTarget,
+  remainingBudget,
   SCAN_TAB_STATUSES,
   SCAN_TABS,
   type ScanMode,
@@ -20,6 +22,7 @@ import {
 import { reportPdfPath } from '@strix-panel/shared/env'
 import { and, asc, count, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm'
 import type { AuthUser } from '../../lib/auth'
+import { assertCanResumeScan, assertCanStartScan } from '../../lib/budget'
 import { db } from '../../lib/db'
 import { env } from '../../lib/env'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors'
@@ -117,6 +120,15 @@ export function parseTargets(targets: string[]): string[] {
 export async function createScan(viewer: Scanner, input: CreateScanInput): Promise<ScanDto> {
   assertApproved(viewer)
   const targets = parseTargets(input.targets)
+  const budget = await assertCanStartScan(viewer.id)
+  const remaining = remainingBudget(budget.limitUsd, budget.spentUsd)
+  // An empty cap is fine: the worker caps the scan at the remaining budget when it starts.
+  if (remaining !== null && input.maxBudgetUsd !== undefined && input.maxBudgetUsd > remaining) {
+    throw new BadRequestError(
+      'BUDGET_EXCEEDED',
+      `At most ${formatBudgetUsd(remaining)} is left in your budget`,
+    )
+  }
   const [row] = await db
     .insert(schema.scan)
     .values({
@@ -331,6 +343,7 @@ export async function resumeScan(viewer: Scanner, id: string): Promise<ScanDto> 
   const { scan } = await findScan(viewer, id)
   const check = checkScanResume({ ...scan, agentCount: scan.agents.length })
   if (!check.ok) throw new ConflictError(check.code, check.message)
+  await assertCanResumeScan(scan, viewer.id)
   if (!(await releaseScanJob(scanQueue, id))) {
     throw new ConflictError(
       'SCAN_NOT_RESUMABLE',

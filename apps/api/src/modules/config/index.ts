@@ -12,6 +12,7 @@ export const configModule = new Elysia({ name: 'config' }).get(
       registrationEnabled: env.AUTH_REGISTRATION_ENABLED,
     },
     branding: { showPoweredBy: env.SHOW_POWERED_BY_CODIUM },
+    budget: { minToStartUsd: env.MIN_SCAN_BUDGET_USD },
   }),
   {
     response: PublicConfigResponse,

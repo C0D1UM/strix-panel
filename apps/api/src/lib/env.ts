@@ -1,6 +1,11 @@
 import { Type } from '@sinclair/typebox'
 import { devDatabaseUrl } from '@strix-panel/db'
-import { DEFAULT_REPORT_DIR, parseEnv, splitList } from '@strix-panel/shared/env'
+import {
+  DEFAULT_MIN_SCAN_BUDGET_USD,
+  DEFAULT_REPORT_DIR,
+  parseEnv,
+  splitList,
+} from '@strix-panel/shared/env'
 
 const schema = Type.Object({
   NODE_ENV: Type.Union(
@@ -26,6 +31,8 @@ const schema = Type.Object({
   AUTH_REGISTRATION_ENABLED: Type.Boolean({ default: true }),
   // false: new users start pending and cannot start scans until an admin approves them. Existing users are unaffected.
   AUTH_AUTO_APPROVE_USERS: Type.Boolean({ default: true }),
+  // What a user with a budget must have left (USD) to start or resume a scan, so scans don't run out halfway.
+  MIN_SCAN_BUDGET_USD: Type.Number({ minimum: 0, default: DEFAULT_MIN_SCAN_BUDGET_USD }),
   // Comma-separated. Empty means any email may sign in.
   ALLOWED_EMAIL_DOMAINS: Type.String({ default: '' }),
   // Shows a "Powered by CODIUM" credit in the web app. Off by default.

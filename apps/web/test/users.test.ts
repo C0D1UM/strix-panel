@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { availableActions, filterUsers, type AdminUser } from '../src/lib/users'
+import { availableActions, filterUsers, formatUserBudget, type AdminUser } from '../src/lib/users'
 
 vi.mock('../src/lib/api', () => ({ api: {} }))
 
@@ -12,7 +12,7 @@ const u = (over: Partial<AdminUser>): AdminUser => ({
   status: 'active',
   runs: 0,
   costUsd: 0,
-  costThisMonthUsd: 0,
+  budget: { limitUsd: null, window: 'month', spentUsd: 0 },
   lastRunAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   ...over,
@@ -54,4 +54,16 @@ test('search matches name or email, case-insensitive', () => {
   expect(filterUsers(users, 'all', 'ALI').map((x) => x.id)).toEqual(['1'])
   expect(filterUsers(users, 'all', 'corp').map((x) => x.id)).toEqual(['2'])
   expect(filterUsers(users, 'all', '  ').map((x) => x.id)).toEqual(['1', '2'])
+})
+
+test('budget column text', () => {
+  const budget = (
+    limitUsd: number | null,
+    window: AdminUser['budget']['window'],
+    spentUsd: number,
+  ) => formatUserBudget(u({ budget: { limitUsd, window, spentUsd } }))
+  expect(budget(50, 'month', 37.6)).toBe('$37.60 / $50.00 · month')
+  expect(budget(null, 'month', 4.2)).toBe('Unlimited · $4.20 this month')
+  expect(budget(null, 'forever', 1)).toBe('Unlimited · $1.00 in total')
+  expect(budget(0, 'week', 0)).toBe('No budget')
 })
