@@ -11,6 +11,7 @@ vi.mock('../src/lib/public-config', async (importOriginal) => ({
 const config = (showPoweredBy: boolean): PublicConfig => ({
   auth: { providers: ['email'], registrationEnabled: true },
   branding: { showPoweredBy },
+  budget: { minToStartUsd: 3 },
 })
 
 afterEach(() => {

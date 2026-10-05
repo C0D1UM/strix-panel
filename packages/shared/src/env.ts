@@ -33,3 +33,6 @@ export function splitList(value: string): string[] {
 export const DEFAULT_REPORT_DIR = join(tmpdir(), 'strix-panel-reports')
 
 export const reportPdfPath = (reportDir: string, scanId: string) => join(reportDir, `${scanId}.pdf`)
+
+// MIN_SCAN_BUDGET_USD: what a user with a budget must have left to start or resume a scan.
+export const DEFAULT_MIN_SCAN_BUDGET_USD = 3

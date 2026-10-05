@@ -4,15 +4,17 @@ import {
   DropdownMenuItem,
   DropdownMenuPortal,
   DropdownMenuRoot,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
 import { computed } from 'vue'
 import { ACTION_LABELS, availableActions, type AdminUser, type UserAction } from '../lib/users'
 
-const props = defineProps<{ user: AdminUser; busy?: boolean }>()
-const emit = defineEmits<{ select: [action: UserAction] }>()
+// `self`: the signed-in admin's own row, where only the budget can be changed.
+const props = defineProps<{ user: AdminUser; busy?: boolean; self?: boolean }>()
+const emit = defineEmits<{ select: [action: UserAction]; budget: [] }>()
 
-const actions = computed(() => availableActions(props.user))
+const actions = computed(() => (props.self ? [] : availableActions(props.user)))
 const danger = new Set<UserAction>(['disable', 'remove'])
 
 const itemClass =
@@ -46,6 +48,10 @@ const itemClass =
           @select="emit('select', action)"
         >
           {{ ACTION_LABELS[action] }}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator v-if="actions.length > 0" class="my-1 h-px bg-line" />
+        <DropdownMenuItem data-testid="set-budget" :class="itemClass" @select="emit('budget')">
+          Set budget
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenuPortal>

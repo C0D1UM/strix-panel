@@ -2,7 +2,15 @@
 // Postgres, and forwards a stop request as a signal. A scan that already has a run continues it with
 // `strix --resume`. The only place in the panel that starts Strix.
 import type { ScanJob } from '@strix-panel/db/queue'
-import { isFinishedScanStatus } from '@strix-panel/shared'
+import {
+  BUDGET_WINDOW_CLOSED_MESSAGE,
+  checkScanBudget,
+  floorCents,
+  formatBudgetUsd,
+  isBeforeBudgetWindow,
+  isFinishedScanStatus,
+  remainingBudget,
+} from '@strix-panel/shared'
 import { createWriteStream } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -17,6 +25,8 @@ export interface ProcessorOptions {
   strixBin: string
   workDir: string
   pollIntervalMs: number
+  // MIN_SCAN_BUDGET_USD: what a user with a budget must have left when their scan starts.
+  minScanBudgetUsd: number
   // Environment for the Strix process. Defaults to ours minus DATABASE_URL: the agent must not see DB credentials.
   env?: Record<string, string | undefined>
   // Strix's Docker containers, removed once a scan ends. Defaults to the docker CLI.
@@ -154,6 +164,37 @@ export function createScanProcessor(options: ProcessorOptions) {
     }
   }
 
+  // For users with a budget, every attempt runs with a cap: the scan's own cap, lowered to what the user has left.
+  // Strix counts the cap over the whole run (resumes included), so the scan's spend so far is added back. Returns
+  // null when the scan must not start, after marking it failed.
+  async function capToBudget(scan: ScanRow): Promise<ScanRow | null> {
+    const budget = await store.budget(scan.userId)
+    const remaining = budget ? remainingBudget(budget.limitUsd, budget.spentUsd) : null
+    if (!budget || remaining === null) return scan
+    const fail = async (error: string) => {
+      await store.setStatus(scan.id, 'failed', 'Scan failed', { error, finishedAt: new Date() })
+      return null
+    }
+    // A resume (it has started before) of a scan from an earlier window. The API refuses these too; this catches
+    // one queued just before the window turned.
+    if (scan.startedAt !== null && isBeforeBudgetWindow(budget.window, scan.createdAt)) {
+      return fail(BUDGET_WINDOW_CLOSED_MESSAGE)
+    }
+    if (!checkScanBudget({ ...budget, minUsd: options.minScanBudgetUsd }).ok) {
+      return fail(
+        `Not enough budget left to start the scan (${formatBudgetUsd(remaining)} left, ${formatBudgetUsd(options.minScanBudgetUsd)} needed)`,
+      )
+    }
+    const cap = floorCents(Math.min(scan.maxBudgetUsd ?? Infinity, scan.costUsd + remaining))
+    if (scan.maxBudgetUsd === null || cap < scan.maxBudgetUsd) {
+      await store.addEvent(
+        scan.id,
+        `Budget cap: ${formatBudgetUsd(cap)} (limited by your remaining budget)`,
+      )
+    }
+    return { ...scan, maxBudgetUsd: cap }
+  }
+
   return async function processScan(job: ScanJob): Promise<void> {
     const { scanId } = job.data
     const scan = await store.get(scanId)
@@ -172,7 +213,8 @@ export function createScanProcessor(options: ProcessorOptions) {
     }
     if (scan.status !== 'queued' || !(await store.start(scan.id))) return
     try {
-      await run(scan)
+      const capped = await capToBudget(scan)
+      if (capped) await run(capped)
     } catch (error) {
       await markFailed(store, scan.id, (error as Error).message)
       throw error

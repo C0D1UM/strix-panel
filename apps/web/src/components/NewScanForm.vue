@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { SCAN_MODES, type ScanMode } from '@strix-panel/shared'
-import { computed, ref } from 'vue'
+import { formatBudgetUsd, SCAN_MODES, type ScanMode } from '@strix-panel/shared'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '../lib/api'
+import { budgetBlockReason, budgetLeftText, loadMyBudget, type MyBudget } from '../lib/budget'
 import { parseTargetsInput } from '../lib/scan-targets'
 import { SCAN_MODE_HINTS, type Scan } from '../lib/scans'
 import AppButton from './ui/AppButton.vue'
@@ -17,15 +18,33 @@ const budget = ref<number | string>('')
 const submitting = ref(false)
 const error = ref<string | null>(null)
 const touched = ref(false)
+const myBudget = ref<MyBudget | null>(null)
+
+onMounted(async () => {
+  myBudget.value = await loadMyBudget()
+})
+
+// Null when the user has no budget limit (or it hasn't loaded).
+const remaining = computed(() => myBudget.value?.remainingUsd ?? null)
+const budgetHint = computed(() => (myBudget.value ? budgetLeftText(myBudget.value) : null))
+const blockReason = computed(() => (myBudget.value ? budgetBlockReason(myBudget.value) : null))
 
 const parsed = computed(() => parseTargetsInput(targetsText.value))
 const budgetValue = computed(() =>
   String(budget.value).trim() === '' ? null : Number(budget.value),
 )
-const budgetError = computed(() =>
-  budgetValue.value !== null && !(budgetValue.value > 0) ? 'Budget must be greater than 0' : null,
+const budgetError = computed(() => {
+  if (budgetValue.value === null) return null
+  if (!(budgetValue.value > 0)) return 'Budget must be greater than 0'
+  if (remaining.value !== null && budgetValue.value > remaining.value) {
+    return `At most ${formatBudgetUsd(remaining.value)} is left in your budget`
+  }
+  return null
+})
+const canSubmit = computed(
+  () =>
+    parsed.value.errors.length === 0 && budgetError.value === null && blockReason.value === null,
 )
-const canSubmit = computed(() => parsed.value.errors.length === 0 && budgetError.value === null)
 
 const inputClass =
   'mt-1.5 block w-full rounded-md border border-line bg-surface-raised px-3 text-sm focus:border-accent focus:outline-none'
@@ -110,9 +129,14 @@ async function submit() {
           v-model="budget"
           type="number"
           min="0.01"
+          :max="remaining ?? undefined"
           step="0.01"
           inputmode="decimal"
-          placeholder="No limit"
+          :placeholder="
+            remaining === null
+              ? 'No limit'
+              : `Up to ${formatBudgetUsd(remaining)} (your remaining budget)`
+          "
           :class="inputClass"
           class="mt-0 h-10 pl-7"
           :aria-invalid="budgetError !== null"
@@ -121,7 +145,15 @@ async function submit() {
     </label>
     <p v-if="budgetError" class="-mt-2 text-sm text-danger">{{ budgetError }}</p>
     <p class="text-xs text-fg-muted">
-      Strix stops cleanly when the LLM spend reaches the budget. Leave empty for no limit.
+      Strix stops cleanly when the LLM spend reaches the budget.
+      {{
+        remaining === null
+          ? 'Leave empty for no limit.'
+          : 'Leave empty to use your remaining budget.'
+      }}
+    </p>
+    <p v-if="budgetHint" data-testid="budget-left" class="-mt-2 text-xs text-fg-muted">
+      {{ budgetHint }}
     </p>
 
     <p
@@ -133,8 +165,21 @@ async function submit() {
       {{ error }}
     </p>
 
+    <p
+      v-if="blockReason"
+      data-testid="budget-blocked"
+      class="flex gap-2 rounded-md bg-surface-sunken px-3 py-2.5 text-sm text-fg-muted"
+    >
+      <span class="icon-[lucide--wallet] mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      {{ blockReason }}
+    </p>
+
     <div class="flex justify-end pt-2">
-      <AppButton type="submit" :loading="submitting" :disabled="touched && !canSubmit">
+      <AppButton
+        type="submit"
+        :loading="submitting"
+        :disabled="blockReason !== null || (touched && !canSubmit)"
+      >
         <span class="icon-[lucide--play] size-4" aria-hidden="true" />
         Start scan
       </AppButton>

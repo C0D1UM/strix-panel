@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import KpiCard from '../components/dashboard/KpiCard.vue'
 import SeverityChart from '../components/dashboard/SeverityChart.vue'
 import StatusChart from '../components/dashboard/StatusChart.vue'
@@ -7,6 +7,7 @@ import TrendChart from '../components/dashboard/TrendChart.vue'
 import UserUsageTable from '../components/dashboard/UserUsageTable.vue'
 import UserAvatar from '../components/UserAvatar.vue'
 import { api } from '../lib/api'
+import { budgetCard, loadMyBudget, type MyBudget } from '../lib/budget'
 import { currentUser } from '../lib/current-user'
 import {
   formatBucket,
@@ -51,6 +52,13 @@ async function load() {
 }
 
 watch([preset, scope, isAdmin], load, { immediate: true })
+
+// The viewer's own budget, whatever the scope and range.
+const myBudget = ref<MyBudget | null>(null)
+onMounted(async () => {
+  myBudget.value = await loadMyBudget()
+})
+const budget = computed(() => (myBudget.value ? budgetCard(myBudget.value) : null))
 
 const kpis = computed(() => dashboard.value?.kpis)
 const totalFindings = computed(() =>
@@ -140,7 +148,10 @@ const segment = (active: boolean) =>
     <p v-else-if="loading && !dashboard" class="mt-8 text-sm text-fg-muted">Loading…</p>
 
     <template v-if="dashboard && kpis">
-      <div class="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4" :class="{ 'opacity-60': loading }">
+      <div
+        class="mt-8 grid grid-cols-2 gap-4"
+        :class="[budget ? 'lg:grid-cols-5' : 'lg:grid-cols-4', { 'opacity-60': loading }]"
+      >
         <KpiCard
           label="Scans"
           icon="icon-[lucide--radar]"
@@ -163,6 +174,14 @@ const segment = (active: boolean) =>
           icon="icon-[lucide--bug]"
           :value="String(totalFindings)"
           :hint="`${kpis.findings.critical} critical · ${kpis.findings.high} high`"
+        />
+        <KpiCard
+          v-if="budget"
+          data-testid="budget-card"
+          label="Your budget"
+          icon="icon-[lucide--wallet]"
+          :value="budget.value"
+          :hint="budget.hint"
         />
       </div>
 
