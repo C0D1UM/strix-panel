@@ -14,7 +14,15 @@ vi.mock('../src/lib/api', () => ({
 }))
 vi.mock('../src/lib/public-config', () => ({ reloadPublicConfig: vi.fn() }))
 
-const saved = { auth: { registrationEnabled: true, autoApproveUsers: true } }
+const saved = {
+  auth: { registrationEnabled: true, autoApproveUsers: true },
+  budget: {
+    minToStartUsd: 3,
+    newUserLimitEnabled: false,
+    newUserLimitUsd: 10,
+    newUserWindow: 'month',
+  },
+}
 const Empty = { template: '<div />' }
 const router = createRouter({
   history: createMemoryHistory(),
@@ -52,8 +60,16 @@ const saveBar = (w: Wrapper) => w.find('[data-testid="save-bar"]')
 
 test('shows the sign-up section in the outline and the saved values', async () => {
   const wrapper = await mountPage()
-  expect(wrapper.get('nav[aria-label="On this page"]').text()).toContain('Sign-up')
-  expect(switches(wrapper).map((s) => s.attributes('aria-checked'))).toEqual(['true', 'true'])
+  const outline = wrapper.get('nav[aria-label="On this page"]').text()
+  expect(outline).toContain('Sign-up')
+  expect(outline).toContain('Budgets')
+  expect(switches(wrapper).map((s) => s.attributes('aria-checked'))).toEqual([
+    'true',
+    'true',
+    'false',
+  ])
+  expect(wrapper.find('[data-testid="new-user-limit-fields"]').exists()).toBe(false)
+  expect((wrapper.get('[data-testid="min-to-start"]').element as HTMLInputElement).value).toBe('3')
   expect(saveBar(wrapper).exists()).toBe(false)
   wrapper.unmount()
 })
@@ -70,7 +86,7 @@ test('discard restores the saved values', async () => {
 
 test('save sends only the changed fields', async () => {
   patch.mockResolvedValue({
-    data: { auth: { registrationEnabled: true, autoApproveUsers: false } },
+    data: { ...saved, auth: { registrationEnabled: true, autoApproveUsers: false } },
     error: null,
   })
   const wrapper = await mountPage()
@@ -83,6 +99,45 @@ test('save sends only the changed fields', async () => {
     message: 'Settings saved.',
     tone: 'success',
   })
+  wrapper.unmount()
+})
+
+test('limiting new users shows the amount and period, and saves them', async () => {
+  patch.mockImplementation(async (body: { budget: object }) => ({
+    data: { ...saved, budget: { ...saved.budget, ...body.budget } },
+    error: null,
+  }))
+  const wrapper = await mountPage()
+  await switches(wrapper)[2]!.trigger('click')
+  expect(wrapper.find('[data-testid="new-user-limit-fields"]').exists()).toBe(true)
+  await wrapper.get('[data-testid="new-user-limit-amount"]').setValue('25')
+  await wrapper.get('[data-testid="new-user-limit-window"]').setValue('week')
+  await wrapper.get('[data-testid="save"]').trigger('click')
+  await flushPromises()
+  expect(patch).toHaveBeenCalledWith({
+    budget: { newUserLimitEnabled: true, newUserLimitUsd: 25, newUserWindow: 'week' },
+  })
+  expect(saveBar(wrapper).exists()).toBe(false)
+  wrapper.unmount()
+})
+
+test('an invalid amount blocks saving', async () => {
+  const wrapper = await mountPage()
+  await wrapper.get('[data-testid="min-to-start"]').setValue('')
+  expect(wrapper.text()).toContain('Enter an amount')
+  expect(wrapper.get('[data-testid="save"]').attributes('disabled')).toBeDefined()
+  await wrapper.get('[data-testid="min-to-start"]').setValue('1.234')
+  expect(wrapper.text()).toContain('Use whole cents')
+  await wrapper.get('[data-testid="save"]').trigger('click')
+  expect(patch).not.toHaveBeenCalled()
+  wrapper.unmount()
+})
+
+test('warns when the default limit is below the minimum to start', async () => {
+  const wrapper = await mountPage()
+  await switches(wrapper)[2]!.trigger('click')
+  await wrapper.get('[data-testid="new-user-limit-amount"]').setValue('2')
+  expect(wrapper.get('[data-testid="limit-below-minimum"]').text()).toContain('$3.00 minimum')
   wrapper.unmount()
 })
 

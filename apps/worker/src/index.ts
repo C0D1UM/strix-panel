@@ -1,5 +1,6 @@
 import { createDb } from '@strix-panel/db'
 import { createReportWorker, createScanWorker } from '@strix-panel/db/queue'
+import { getSettings } from '@strix-panel/db/settings'
 import { env } from './env'
 import { createScanProcessor, markFailed } from './processor'
 import { createReportProcessor } from './report'
@@ -15,7 +16,7 @@ const processScan = createScanProcessor({
   strixBin: env.STRIX_BIN,
   workDir: env.STRIX_WORK_DIR,
   pollIntervalMs: env.STRIX_POLL_INTERVAL_MS,
-  minScanBudgetUsd: env.MIN_SCAN_BUDGET_USD,
+  minScanBudgetUsd: async () => (await getSettings(db)).budget.minToStartUsd,
 })
 
 const worker = createScanWorker(env.DATABASE_URL, processScan, {

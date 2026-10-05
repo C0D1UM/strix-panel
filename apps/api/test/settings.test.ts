@@ -24,6 +24,12 @@ describe('settings service', () => {
   test('defaults when nothing is stored', async () => {
     expect(await getSettings()).toEqual({
       auth: { registrationEnabled: true, autoApproveUsers: true },
+      budget: {
+        minToStartUsd: 3,
+        newUserLimitEnabled: false,
+        newUserLimitUsd: 10,
+        newUserWindow: 'month',
+      },
     })
   })
 
@@ -64,8 +70,19 @@ describe('/api/v1/admin/settings', () => {
 
   test('PATCH then GET round-trips', async () => {
     const admin = await signUp('first@example.com')
-    const patched = await patch(admin.cookie, { auth: { registrationEnabled: false } })
-    const expected = { auth: { registrationEnabled: false, autoApproveUsers: true } }
+    const patched = await patch(admin.cookie, {
+      auth: { registrationEnabled: false },
+      budget: { minToStartUsd: 1.5, newUserLimitEnabled: true, newUserWindow: 'year' },
+    })
+    const expected = {
+      auth: { registrationEnabled: false, autoApproveUsers: true },
+      budget: {
+        minToStartUsd: 1.5,
+        newUserLimitEnabled: true,
+        newUserLimitUsd: 10,
+        newUserWindow: 'year',
+      },
+    }
     expect(patched.status).toBe(200)
     expect(await patched.json()).toEqual(expected)
     const got = await request('/api/v1/admin/settings', { headers: { cookie: admin.cookie } })
@@ -76,6 +93,18 @@ describe('/api/v1/admin/settings', () => {
     const admin = await signUp('first@example.com')
     const res = await patch(admin.cookie, { auth: { registrationEnabled: 'nope' } })
     expect(res.status).toBe(422)
+    expect(await db.select().from(schema.setting)).toHaveLength(0)
+  })
+
+  test('rejects out-of-range amounts and unknown budget windows', async () => {
+    const admin = await signUp('first@example.com')
+    for (const budget of [
+      { minToStartUsd: -1 },
+      { newUserLimitUsd: 100_001 },
+      { newUserWindow: 'decade' },
+    ]) {
+      expect((await patch(admin.cookie, { budget })).status).toBe(422)
+    }
     expect(await db.select().from(schema.setting)).toHaveLength(0)
   })
 

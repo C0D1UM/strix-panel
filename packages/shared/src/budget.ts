@@ -45,7 +45,7 @@ export function remainingBudget(limitUsd: number | null, spentUsd: number): numb
 export interface ScanBudgetInput {
   limitUsd: number | null
   spentUsd: number
-  // MIN_SCAN_BUDGET_USD: what must be left to start or resume a scan, so it doesn't run out halfway.
+  // The budget.minToStartUsd setting: what must be left to start or resume a scan, so it doesn't run out halfway.
   minUsd: number
 }
 

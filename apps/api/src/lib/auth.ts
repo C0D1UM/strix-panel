@@ -49,6 +49,8 @@ export const auth = betterAuth({
     additionalFields: {
       approvedAt: { type: 'date', required: false, input: false },
       deletedAt: { type: 'date', required: false, input: false },
+      budgetUsd: { type: 'number', required: false, input: false },
+      budgetWindow: { type: 'string', required: false, input: false },
     },
   },
   // Registration is a runtime setting, enforced in the user create hook rather than with `disableSignUp`.
@@ -67,16 +69,23 @@ export const auth = betterAuth({
       create: {
         before: async (user, ctx) => {
           assertAllowedEmail(user.email)
-          const { auth: settings } = await getSettings()
+          const settings = await getSettings()
           // No endpoint context means the server created the user itself (db:seed), not a sign-up.
-          if (ctx && !settings.registrationEnabled) {
+          if (ctx && !settings.auth.registrationEnabled) {
             throw new APIError('FORBIDDEN', {
               message: 'New accounts are disabled on this panel. Ask an admin for access.',
               code: 'REGISTRATION_CLOSED',
             })
           }
+          const { budget } = settings
           return {
-            data: { ...user, approvedAt: settings.autoApproveUsers ? new Date() : null },
+            data: {
+              ...user,
+              approvedAt: settings.auth.autoApproveUsers ? new Date() : null,
+              // Every new account, admins included, starts with the default budget.
+              budgetUsd: budget.newUserLimitEnabled ? budget.newUserLimitUsd : null,
+              budgetWindow: budget.newUserWindow,
+            },
           }
         },
         after: async (user) => {

@@ -4,8 +4,6 @@ x-app-env: &app-env
   DATABASE_URL: postgres://${POSTGRES_USER:-strix}:${POSTGRES_PASSWORD:-strix}@postgres:5432/${POSTGRES_DB:-strix_panel}
   # PDF reports: written by the worker, served by the api (the `reports` volume).
   REPORT_DIR: /app/reports
-  # Budget a user with a limit must have left to start a scan: checked by the api and again by the worker.
-  MIN_SCAN_BUDGET_USD: ${MIN_SCAN_BUDGET_USD:-3}
 
 services:
   postgres:

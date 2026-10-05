@@ -22,7 +22,7 @@ export const MyBudgetResponse = t.Object({
   spentUsd: t.Number(),
   // Null = unlimited.
   remainingUsd: t.Nullable(t.Number()),
-  // MIN_SCAN_BUDGET_USD: needed to start a scan when the budget is limited.
+  // Needed to start a scan when the budget is limited (Admin → Settings).
   minToStartUsd: t.Number(),
   // Null for the `forever` window.
   windowStartsAt: t.Nullable(Timestamp),

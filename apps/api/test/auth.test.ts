@@ -143,6 +143,48 @@ describe('approval and account state', () => {
   })
 })
 
+describe('default budget for new accounts', () => {
+  test('new accounts are unlimited by default', async () => {
+    await signUp('first@example.com')
+    const [user] = await db
+      .select({ budgetUsd: schema.user.budgetUsd, budgetWindow: schema.user.budgetWindow })
+      .from(schema.user)
+    expect(user).toEqual({ budgetUsd: null, budgetWindow: 'month' })
+  })
+
+  test('every new account gets the default limit, admins and the seed admin included', async () => {
+    await updateSettings(
+      { budget: { newUserLimitEnabled: true, newUserLimitUsd: 25, newUserWindow: 'week' } },
+      null,
+    )
+    await signUp('first@example.com')
+    await signUp('second@example.com')
+    await seedAdmin({ email: 'seed@example.com', password: 'password1234', name: 'Seed' })
+    const users = await db
+      .select({
+        email: schema.user.email,
+        role: schema.user.role,
+        budgetUsd: schema.user.budgetUsd,
+        budgetWindow: schema.user.budgetWindow,
+      })
+      .from(schema.user)
+      .orderBy(schema.user.email)
+    expect(users).toEqual([
+      { email: 'first@example.com', role: 'admin', budgetUsd: 25, budgetWindow: 'week' },
+      { email: 'second@example.com', role: 'user', budgetUsd: 25, budgetWindow: 'week' },
+      { email: 'seed@example.com', role: 'admin', budgetUsd: 25, budgetWindow: 'week' },
+    ])
+  })
+
+  test('turning the limit off keeps the amount but new accounts are unlimited', async () => {
+    await updateSettings({ budget: { newUserLimitEnabled: true, newUserLimitUsd: 25 } }, null)
+    await updateSettings({ budget: { newUserLimitEnabled: false } }, null)
+    await signUp('first@example.com')
+    const [user] = await db.select({ budgetUsd: schema.user.budgetUsd }).from(schema.user)
+    expect(user!.budgetUsd).toBeNull()
+  })
+})
+
 describe('auto-approve disabled', () => {
   test('first user (admin) is approved, later users are pending, seed admin is approved', async () => {
     await updateSettings({ auth: { autoApproveUsers: false } }, null)
