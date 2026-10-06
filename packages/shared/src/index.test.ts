@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import {
   checkScanResume,
+  checkScanTargetFileName,
   isAllowedEmail,
   isFinishedScanStatus,
   normalizeScanTarget,
   toRole,
   type ResumableScan,
+  scanTargetLabel,
   userStatus,
 } from './index'
 
@@ -111,4 +113,35 @@ describe('toRole', () => {
     expect(toRole('owner')).toBe('user')
     expect(toRole(null)).toBe('user')
   })
+})
+
+describe('checkScanTargetFileName', () => {
+  test('accepts spec file names with an allowed extension, any case', () => {
+    for (const name of ['petstore.yaml', 'api.YML', 'Collection v2.1.json', 'a.b.json'])
+      expect(checkScanTargetFileName(name)).toBeNull()
+  })
+
+  test('rejects unsafe or unsupported file names', () => {
+    for (const name of [
+      '',
+      '.',
+      '..',
+      '../a.json',
+      'a/b.json',
+      'a\\b.json',
+      'a\u0000.json',
+      'a\n.yaml',
+      '.json',
+      'spec.txt',
+      'a:b.json',
+      'spec.json.exe',
+      `${'a'.repeat(251)}.json`,
+    ])
+      expect(checkScanTargetFileName(name)).not.toBeNull()
+  })
+})
+
+test('scanTargetLabel labels a target by its URL or file name', () => {
+  expect(scanTargetLabel({ type: 'url', value: 'https://a.example/' })).toBe('https://a.example/')
+  expect(scanTargetLabel({ type: 'file', name: 'spec.yaml' })).toBe('spec.yaml')
 })

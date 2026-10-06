@@ -16,6 +16,7 @@ export const configModule = new Elysia({ name: 'config' }).get(
       },
       branding: { showPoweredBy: env.SHOW_POWERED_BY_CODIUM },
       budget: { minToStartUsd: settings.budget.minToStartUsd },
+      scans: { maxTargets: settings.scans.maxTargets },
     }
   },
   {

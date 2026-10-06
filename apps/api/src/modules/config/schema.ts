@@ -13,4 +13,8 @@ export const PublicConfigResponse = t.Object({
     // What a user with a budget must have left to start a scan (Admin → Settings).
     minToStartUsd: t.Number(),
   }),
+  scans: t.Object({
+    // Targets a new scan may have (Admin → Settings).
+    maxTargets: t.Integer(),
+  }),
 })

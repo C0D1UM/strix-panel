@@ -27,7 +27,11 @@ test('scan findings are unique per scan and Strix id, and cascade with the scan'
   const [owner] = await db.insert(schema.user).values({ name: 'Scan test', email }).returning()
   const [scan] = await db
     .insert(schema.scan)
-    .values({ userId: owner!.id, targets: ['https://example.com/'], scanMode: 'quick' })
+    .values({
+      userId: owner!.id,
+      targets: [{ type: 'url', value: 'https://example.com/' }],
+      scanMode: 'quick',
+    })
     .returning()
   expect(scan!.status).toBe('queued')
   expect(scan!.costUsd).toBe(0)

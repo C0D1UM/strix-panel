@@ -1,6 +1,11 @@
 import { Type } from '@sinclair/typebox'
 import { devDatabaseUrl } from '@strix-panel/db'
-import { DEFAULT_REPORT_DIR, parseEnv } from '@strix-panel/shared/env'
+import {
+  DEFAULT_REPORT_DIR,
+  DEFAULT_STRIX_TMP_DIR,
+  DEFAULT_UPLOAD_DIR,
+  parseEnv,
+} from '@strix-panel/shared/env'
 
 const schema = Type.Object({
   NODE_ENV: Type.String({ default: 'development' }),
@@ -22,6 +27,11 @@ const schema = Type.Object({
   STRIX_PYTHON: Type.String({ default: '' }),
   // Rendered PDFs, read back by the API. Must be the same directory as the API's REPORT_DIR.
   REPORT_DIR: Type.String({ default: DEFAULT_REPORT_DIR }),
+  // Uploaded spec files, written by the API. Must be the same directory as the API's UPLOAD_DIR.
+  UPLOAD_DIR: Type.String({ default: DEFAULT_UPLOAD_DIR }),
+  // TMPDIR for Strix. It bind-mounts spec files staged here into its sandbox, so the Docker daemon must see this path
+  // at the same location: under $HOME in development (Colima), a same-path host bind in production.
+  STRIX_TMP_DIR: Type.String({ default: DEFAULT_STRIX_TMP_DIR }),
 })
 
 // Runs with no .env in development; production must set DATABASE_URL.

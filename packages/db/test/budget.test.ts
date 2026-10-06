@@ -22,7 +22,7 @@ async function addUser(name: string) {
 const addScan = (userId: string, costUsd: number, createdAt: string, status = 'completed') =>
   db.insert(schema.scan).values({
     userId,
-    targets: ['https://example.com/'],
+    targets: [{ type: 'url', value: 'https://example.com/' }],
     scanMode: 'quick',
     status: status as 'completed',
     costUsd,

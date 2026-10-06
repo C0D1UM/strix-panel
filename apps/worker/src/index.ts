@@ -15,6 +15,8 @@ const processScan = createScanProcessor({
   sandboxes,
   strixBin: env.STRIX_BIN,
   workDir: env.STRIX_WORK_DIR,
+  uploadDir: env.UPLOAD_DIR,
+  tmpDir: env.STRIX_TMP_DIR,
   pollIntervalMs: env.STRIX_POLL_INTERVAL_MS,
   minScanBudgetUsd: async () => (await getSettings(db)).budget.minToStartUsd,
 })

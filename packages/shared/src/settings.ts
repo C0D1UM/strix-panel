@@ -1,4 +1,5 @@
 import { BUDGET_WINDOWS, type BudgetWindow } from './budget'
+import { SCAN_TARGETS_HARD_LIMIT } from './index'
 
 // Panel settings stored in the `setting` table and edited on Admin → Settings. Each field is one row keyed
 // `<section>.<field>`; a missing row means the default below.
@@ -18,6 +19,11 @@ export interface Settings {
     newUserLimitUsd: number
     newUserWindow: BudgetWindow
   }
+  scans: {
+    // Targets (URLs and spec files together) a new scan may have, 1 to SCAN_TARGETS_HARD_LIMIT. Existing scans
+    // keep theirs, also on resume.
+    maxTargets: number
+  }
 }
 
 export type SettingsPatch = { [S in keyof Settings]?: Partial<Settings[S]> }
@@ -30,11 +36,23 @@ export const DEFAULT_SETTINGS: Settings = {
     newUserLimitUsd: 10,
     newUserWindow: 'month',
   },
+  scans: { maxTargets: 3 },
 }
 
 // Fields limited to a fixed set of values. A stored value outside it falls back to the default.
 const ALLOWED_VALUES: Record<string, readonly unknown[]> = {
   'budget.newUserWindow': BUDGET_WINDOWS,
+}
+
+// Whole-number fields and their bounds. A stored value outside them falls back to the default.
+const INTEGER_RANGES: Record<string, readonly [number, number]> = {
+  'scans.maxTargets': [1, SCAN_TARGETS_HARD_LIMIT],
+}
+
+function inRange(key: string, value: unknown): boolean {
+  const range = INTEGER_RANGES[key]
+  if (!range) return true
+  return Number.isInteger(value) && (value as number) >= range[0] && (value as number) <= range[1]
 }
 
 type Section = Record<string, unknown>
@@ -50,6 +68,7 @@ export function mergeSettings(rows: readonly { key: string; value: unknown }[]):
     if (rest.length > 0 || !target || field === undefined || !(field in target)) continue
     if (typeof target[field] !== typeof value) continue
     if (ALLOWED_VALUES[key] && !ALLOWED_VALUES[key].includes(value)) continue
+    if (!inRange(key, value)) continue
     target[field] = value
   }
   return merged

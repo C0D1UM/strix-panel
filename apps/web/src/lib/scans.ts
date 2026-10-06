@@ -45,8 +45,8 @@ export const SCAN_MODE_HINTS = {
 export function scanTitle(scan: Pick<Scan, 'name' | 'targets'>): string {
   if (scan.name) return scan.name
   const [first, ...rest] = scan.targets
-  const host = first ? new URL(first).host : 'Scan'
-  return rest.length > 0 ? `${host} +${rest.length}` : host
+  const head = !first ? 'Scan' : first.type === 'url' ? new URL(first.value).host : first.name
+  return rest.length > 0 ? `${head} +${rest.length}` : head
 }
 
 export function formatTokens(n: number): string {

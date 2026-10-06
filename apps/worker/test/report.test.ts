@@ -29,7 +29,7 @@ async function setup(options: { status?: 'completed' | 'failed'; runFiles?: bool
     .insert(schema.scan)
     .values({
       userId,
-      targets: ['https://example.com/'],
+      targets: [{ type: 'url', value: 'https://example.com/' }],
       scanMode: 'quick',
       status: options.status ?? 'completed',
       runName: 'example-com_ab12',

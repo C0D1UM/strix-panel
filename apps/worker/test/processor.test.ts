@@ -1,7 +1,8 @@
 import { createDb, schema } from '@strix-panel/db'
 import type { ScanJob } from '@strix-panel/db/queue'
+import type { ScanTarget } from '@strix-panel/shared'
 import { asc, eq } from 'drizzle-orm'
-import { mkdtemp } from 'node:fs/promises'
+import { exists, mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
@@ -25,12 +26,15 @@ beforeEach(async () => {
   userId = user!.id
 })
 
-async function createScan(status: 'queued' | 'running' = 'queued') {
+async function createScan(
+  status: 'queued' | 'running' = 'queued',
+  targets: ScanTarget[] = [{ type: 'url', value: 'https://example.com/' }],
+) {
   const [scan] = await db
     .insert(schema.scan)
     .values({
       userId,
-      targets: ['https://example.com/'],
+      targets,
       scanMode: 'quick',
       status,
       maxBudgetUsd: 5,
@@ -45,6 +49,9 @@ async function processor(
   minScanBudgetUsd = async () => 3,
 ) {
   const workDir = reuseWorkDir ?? (await mkdtemp(join(tmpdir(), 'strix-worker-')))
+  // realpath: macOS's temp dir is a symlink, and the shell in fake Strix reports the resolved path.
+  const uploadDir = await realpath(await mkdtemp(join(tmpdir(), 'strix-uploads-')))
+  const tmpDir = await realpath(await mkdtemp(join(tmpdir(), 'strix-tmp-')))
   const removed: string[] = []
   const sandboxes: Sandboxes = {
     remove: async (scanId) => void removed.push(scanId),
@@ -55,6 +62,8 @@ async function processor(
     sandboxes,
     strixBin: FAKE_STRIX,
     workDir,
+    uploadDir,
+    tmpDir,
     pollIntervalMs: 100,
     minScanBudgetUsd,
     env: { ...strixEnv(), FAKE_STRIX_SCENARIO: scenario },
@@ -63,6 +72,8 @@ async function processor(
   })
   return {
     workDir,
+    uploadDir,
+    tmpDir,
     removed,
     process: (scanId: string) => process({ id: scanId, data: { scanId } } as ScanJob),
   }
@@ -162,6 +173,17 @@ test('a redelivered job for a running scan marks it failed instead of restarting
   expect(removed).toEqual([scan.id])
 })
 
+test("a redelivered job removes the scan's staged spec files", async () => {
+  const scan = await createScan('running')
+  await db.update(schema.scan).set({ runName: 'stale_run' }).where(eq(schema.scan.id, scan.id))
+  const { tmpDir, process } = await processor('completed')
+  const staging = join(tmpDir, 'strix_api_specs', 'stale_run')
+  await mkdir(staging, { recursive: true })
+  await writeFile(join(staging, 'pets.json'), '{}')
+  await process(scan.id)
+  expect(await exists(staging)).toBe(false)
+})
+
 test('a scan that is no longer queued is skipped', async () => {
   const scan = await createScan()
   await db.update(schema.scan).set({ status: 'stopped' }).where(eq(schema.scan.id, scan.id))
@@ -213,6 +235,58 @@ test('a resumed scan whose run files are gone fails without starting Strix', asy
   expect(done.error).toBe("The scan's run files are gone, so it can't be resumed")
   expect(removed).toEqual([scan.id])
   expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)
+})
+
+test('passes uploaded files to Strix, runs it with STRIX_TMP_DIR and removes the spec staging afterwards', async () => {
+  const scan = await createScan('queued', [{ type: 'file', name: 'pets.yaml' }])
+  const { workDir, uploadDir, tmpDir, process } = await processor('completed')
+  await mkdir(join(uploadDir, scan.id), { recursive: true })
+  await writeFile(join(uploadDir, scan.id, 'pets.yaml'), 'openapi: 3.0.0\n')
+  await process(scan.id)
+
+  const argv = (await readFile(join(workDir, scan.id, 'argv.txt'), 'utf8')).split('\n')
+  expect(argv.slice(0, 4)).toEqual(['-n', '-t', join(uploadDir, scan.id, 'pets.yaml'), '-m'])
+  expect((await readFile(join(workDir, scan.id, 'tmpdir.txt'), 'utf8')).trim()).toBe(tmpDir)
+  expect(await exists(join(tmpDir, 'strix_api_specs', 'example-com_ab12'))).toBe(false)
+  expect((await load(scan.id))!.status).toBe('completed')
+})
+
+test('fails a scan whose uploaded file is missing without starting Strix', async () => {
+  const scan = await createScan('queued', [{ type: 'file', name: 'gone.json' }])
+  const { workDir, process } = await processor('completed')
+  await process(scan.id)
+  const failed = (await load(scan.id))!
+  expect(failed.status).toBe('failed')
+  expect(failed.error).toBe('An uploaded target file is missing: gone.json')
+  expect(await exists(join(workDir, scan.id, 'argv.txt'))).toBe(false)
+})
+
+test('fails a resumed scan whose uploaded file is missing', async () => {
+  const scan = await createScan('queued', [{ type: 'file', name: 'gone.json' }])
+  const { workDir, process } = await processor('completed')
+  const runDir = join(workDir, scan.id, 'strix_runs', 'example-com_ab12')
+  await mkdir(join(runDir, '.state'), { recursive: true })
+  await writeFile(
+    join(runDir, 'run.json'),
+    JSON.stringify({
+      run_name: 'example-com_ab12',
+      status: 'interrupted',
+      llm_usage: { requests: 1, input_tokens: 1, output_tokens: 1, cost: 0.01 },
+    }),
+  )
+  await writeFile(
+    join(runDir, '.state', 'agents.json'),
+    '{"statuses":{},"names":{},"parent_of":{},"errors":{}}',
+  )
+  await db
+    .update(schema.scan)
+    .set({ runName: 'example-com_ab12' })
+    .where(eq(schema.scan.id, scan.id))
+  await process(scan.id)
+  const failed = (await load(scan.id))!
+  expect(failed.status).toBe('failed')
+  expect(failed.error).toBe('An uploaded target file is missing: gone.json')
+  expect(await exists(join(workDir, scan.id, 'argv.txt'))).toBe(false)
 })
 
 describe('user budget', () => {
@@ -278,19 +352,7 @@ describe('user budget', () => {
   test('nothing left fails the scan even with no minimum', async () => {
     await setBudget(0)
     const scan = await createScan()
-    const { workDir, process } = await (async () => {
-      const workDir = await mkdtemp(join(tmpdir(), 'strix-worker-'))
-      const p = createScanProcessor({
-        store,
-        sandboxes: { remove: async () => {}, scanIds: async () => [] },
-        strixBin: FAKE_STRIX,
-        workDir,
-        pollIntervalMs: 100,
-        minScanBudgetUsd: async () => 0,
-        env: { ...strixEnv(), FAKE_STRIX_SCENARIO: 'completed' },
-      })
-      return { workDir, process: (id: string) => p({ id, data: { scanId: id } } as ScanJob) }
-    })()
+    const { workDir, process } = await processor('completed', undefined, async () => 0)
     await process(scan.id)
     expect((await load(scan.id))!.status).toBe('failed')
     expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)

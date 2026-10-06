@@ -4,6 +4,8 @@ x-app-env: &app-env
   DATABASE_URL: postgres://${POSTGRES_USER:-strix}:${POSTGRES_PASSWORD:-strix}@postgres:5432/${POSTGRES_DB:-strix_panel}
   # PDF reports: written by the worker, served by the api (the `reports` volume).
   REPORT_DIR: /app/reports
+  # Uploaded API spec files (scan targets): written by the api, read by the worker (the `uploads` volume).
+  UPLOAD_DIR: /app/uploads
 
 services:
   postgres:
@@ -47,6 +49,7 @@ services:
       SHOW_POWERED_BY_CODIUM: ${SHOW_POWERED_BY_CODIUM:-false}
     volumes:
       - reports:/app/reports:ro
+      - uploads:/app/uploads
     healthcheck:
       test:
         [
@@ -69,12 +72,17 @@ services:
       <<: *app-env
       STRIX_LLM: ${STRIX_LLM:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
+      STRIX_TMP_DIR: ${STRIX_TMP_DIR:-/var/lib/strix-panel/tmp}
     volumes:
       # WARNING: access to the Docker socket is root-equivalent on the host. Strix needs it to start
       # its sandbox containers. Only the worker gets it — never mount it into api or web.
       - /var/run/docker.sock:/var/run/docker.sock
       - strix-runs:/app/strix_runs
       - reports:/app/reports
+      - uploads:/app/uploads:ro
+      # Strix's TMPDIR. It stages a scan's spec files here and bind-mounts them into the sandbox through the host's
+      # Docker daemon, so the path must be the same on the host and in this container.
+      - ${STRIX_TMP_DIR:-/var/lib/strix-panel/tmp}:${STRIX_TMP_DIR:-/var/lib/strix-panel/tmp}
     healthcheck:
       test:
         [
@@ -106,6 +114,8 @@ services:
 volumes:
   postgres-data:
   strix-runs:
+  # Uploaded API spec files. Durable: scans keep their targets.
+  uploads:
   caddy-data:
   # Rendered PDF reports, kept in memory only (never on the host disk). A cache: lost on restart, re-rendered on
   # the next download.

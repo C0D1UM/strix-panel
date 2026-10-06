@@ -73,7 +73,7 @@ describe('GET /api/v1/admin/users', () => {
     await db.insert(schema.scan).values([
       {
         userId: aliceId,
-        targets: ['https://example.com/'],
+        targets: [{ type: 'url', value: 'https://example.com/' }],
         scanMode: 'quick',
         status: 'completed',
         costUsd: 1.25,
@@ -81,7 +81,7 @@ describe('GET /api/v1/admin/users', () => {
       },
       {
         userId: aliceId,
-        targets: ['https://example.com/'],
+        targets: [{ type: 'url', value: 'https://example.com/' }],
         scanMode: 'quick',
         status: 'failed',
         costUsd: 0.5,
@@ -128,7 +128,7 @@ describe('PATCH /api/v1/admin/users/:id/budget', () => {
   test('sets limit and window; spend follows the window', async () => {
     await db.insert(schema.scan).values({
       userId: aliceId,
-      targets: ['https://example.com/'],
+      targets: [{ type: 'url', value: 'https://example.com/' }],
       scanMode: 'quick',
       status: 'completed',
       costUsd: 4,

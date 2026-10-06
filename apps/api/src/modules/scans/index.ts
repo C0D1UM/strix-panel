@@ -40,9 +40,16 @@ export const scansModule = new Elysia({ name: 'scans', prefix: '/scans' })
     },
     {
       requireAuth: true,
+      // A multipart form with a single target sends it as one value, not a list.
+      transform({ body }) {
+        const form = body as { targets?: unknown } | null
+        if (form && form.targets !== undefined && !Array.isArray(form.targets)) {
+          form.targets = [form.targets]
+        }
+      },
       body: CreateScanBody,
       response: { 201: ScanResponse, 400: ErrorResponse, 403: ErrorResponse },
-      detail: { tags, summary: 'Create a scan and start it' },
+      detail: { tags, summary: 'Create a scan and start it (URLs and/or API spec files)' },
     },
   )
   .get(

@@ -78,9 +78,42 @@ export type ScanEventType = (typeof SCAN_EVENT_TYPES)[number]
 export const FINDING_SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const
 export type FindingSeverity = (typeof FINDING_SEVERITIES)[number]
 
-export const MAX_SCAN_TARGETS = 3
+// The most targets a scan can have. The actual limit is the scans.maxTargets setting, which can go up to this.
+export const SCAN_TARGETS_HARD_LIMIT = 20
 export const MAX_SCAN_INSTRUCTION_LENGTH = 4000
 export const MAX_SCAN_NAME_LENGTH = 120
+
+// A scan target: an http(s) URL, or an API spec file uploaded with the scan (stored as UPLOAD_DIR/<scanId>/<name>).
+export type ScanTarget = { type: 'url'; value: string } | { type: 'file'; name: string }
+
+export const MAX_SCAN_TARGET_FILE_BYTES = 5 * 1024 * 1024
+export const SCAN_TARGET_FILE_EXTENSIONS = ['.json', '.yaml', '.yml'] as const
+
+export const scanTargetLabel = (target: ScanTarget) =>
+  target.type === 'url' ? target.value : target.name
+
+const MAX_FILE_NAME_BYTES = 255
+const unsafeChar = (c: string) => {
+  const code = c.charCodeAt(0)
+  // ':' too: Strix splits `--workspace-file <path>:<dest>` (used on resume) at the last colon.
+  return code < 0x20 || code === 0x7f || c === '/' || c === '\\' || c === ':'
+}
+
+// Whether an uploaded file's name can be used as-is on disk and is a spec Strix recognises by extension. Returns the
+// problem, or null when the name is fine.
+export function checkScanTargetFileName(name: string): string | null {
+  if (!name || name === '.' || name === '..' || [...name].some(unsafeChar)) {
+    return `Not a valid file name: ${name}`
+  }
+  if (new TextEncoder().encode(name).length > MAX_FILE_NAME_BYTES) {
+    return `File name is too long: ${name}`
+  }
+  const lower = name.toLowerCase()
+  const ok = SCAN_TARGET_FILE_EXTENSIONS.some(
+    (ext) => lower.endsWith(ext) && lower.length > ext.length,
+  )
+  return ok ? null : `Only .json, .yaml and .yml files are accepted: ${name}`
+}
 
 // Parses one http(s) target URL. Returns the normalized URL, or null when it is not a valid http(s) URL.
 export function normalizeScanTarget(value: string): string | null {

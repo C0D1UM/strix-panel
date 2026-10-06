@@ -1,6 +1,13 @@
 import { Type } from '@sinclair/typebox'
 import { describe, expect, test } from 'bun:test'
-import { parseEnv, splitList } from './env'
+import { isAbsolute, join } from 'node:path'
+import {
+  DEFAULT_STRIX_TMP_DIR,
+  DEFAULT_UPLOAD_DIR,
+  parseEnv,
+  scanTargetFilePath,
+  splitList,
+} from './env'
 
 const schema = Type.Object({
   PORT: Type.Number({ default: 3000 }),
@@ -34,4 +41,11 @@ describe('parseEnv', () => {
 
 test('splitList trims, lowercases and drops empties', () => {
   expect(splitList(' A.com, b.com ,,')).toEqual(['a.com', 'b.com'])
+})
+
+test('development upload and Strix temp dirs live in the repo .data folder', () => {
+  expect(isAbsolute(DEFAULT_UPLOAD_DIR)).toBe(true)
+  expect(DEFAULT_UPLOAD_DIR.endsWith(join('.data', 'uploads'))).toBe(true)
+  expect(DEFAULT_STRIX_TMP_DIR.endsWith(join('.data', 'strix-tmp'))).toBe(true)
+  expect(scanTargetFilePath('/u', 's1', 'spec.yaml')).toBe('/u/s1/spec.yaml')
 })

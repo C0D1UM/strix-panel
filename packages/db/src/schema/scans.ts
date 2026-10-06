@@ -1,4 +1,10 @@
-import type { FindingSeverity, ScanEventType, ScanMode, ScanStatus } from '@strix-panel/shared'
+import type {
+  FindingSeverity,
+  ScanEventType,
+  ScanMode,
+  ScanStatus,
+  ScanTarget,
+} from '@strix-panel/shared'
 import {
   bigint,
   index,
@@ -34,7 +40,7 @@ export const scan = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     name: text('name'),
-    targets: text('targets').array().notNull(),
+    targets: jsonb('targets').$type<ScanTarget[]>().notNull(),
     scanMode: text('scan_mode').$type<ScanMode>().notNull(),
     instruction: text('instruction'),
     maxBudgetUsd: numeric('max_budget_usd', { precision: 10, scale: 2, mode: 'number' }),

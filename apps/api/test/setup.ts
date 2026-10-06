@@ -12,5 +12,6 @@ process.env.AUTH_GOOGLE_ENABLED = 'false'
 process.env.AUTH_EMAIL_PASSWORD_ENABLED = 'true'
 process.env.ALLOWED_EMAIL_DOMAINS = 'example.com'
 process.env.REPORT_DIR = await mkdtemp(join(tmpdir(), 'strix-panel-api-reports-'))
+process.env.UPLOAD_DIR = await mkdtemp(join(tmpdir(), 'strix-panel-api-uploads-'))
 
 await prepareTestDatabase(process.env.DATABASE_URL)

@@ -195,7 +195,7 @@ export async function seedSampleScan(userId: string): Promise<SeedSampleResult> 
       .values({
         userId,
         name: SAMPLE_SCAN_NAME,
-        targets: [TARGET],
+        targets: [{ type: 'url', value: TARGET }],
         scanMode: 'standard',
         instruction: 'Focus on authorization and injection. Test account: demo / demo-password.',
         maxBudgetUsd: 5,
