@@ -168,6 +168,17 @@ test('a redelivered job for a running scan marks it failed instead of restarting
   expect(removed).toEqual([scan.id])
 })
 
+test("a redelivered job removes the scan's staged spec files", async () => {
+  const scan = await createScan('running')
+  await db.update(schema.scan).set({ runName: 'stale_run' }).where(eq(schema.scan.id, scan.id))
+  const { tmpDir, process } = await processor('completed')
+  const staging = join(tmpDir, 'strix_api_specs', 'stale_run')
+  await mkdir(staging, { recursive: true })
+  await writeFile(join(staging, 'pets.json'), '{}')
+  await process(scan.id)
+  expect(await exists(staging)).toBe(false)
+})
+
 test('a scan that is no longer queued is skipped', async () => {
   const scan = await createScan()
   await db.update(schema.scan).set({ status: 'stopped' }).where(eq(schema.scan.id, scan.id))

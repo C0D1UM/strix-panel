@@ -199,6 +199,7 @@ export function createScanProcessor(options: ProcessorOptions) {
         finishedAt: new Date(),
       })
       await removeSandboxes(sandboxes, scan.id)
+      await removeSpecStaging(scan.id)
       return
     }
     if (scan.status !== 'queued' || !(await store.start(scan.id))) return
