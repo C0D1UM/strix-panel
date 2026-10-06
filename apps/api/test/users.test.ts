@@ -34,7 +34,7 @@ type AdminUser = {
   status: string
   runs: number
   costUsd: number
-  costThisMonthUsd: number
+  budget: { limitUsd: number | null; window: string; spentUsd: number }
   lastRunAt: string | null
 }
 
@@ -98,14 +98,14 @@ describe('GET /api/v1/admin/users', () => {
       role: 'user',
       runs: 2,
       costUsd: 1.75,
-      costThisMonthUsd: 0.5,
+      budget: { limitUsd: null, window: 'month', spentUsd: 0.5 },
       lastRunAt: thisMonth.toISOString(),
     })
     expect(users.find((u) => u.id === bobId)).toMatchObject({
       status: 'pending',
       runs: 0,
       costUsd: 0,
-      costThisMonthUsd: 0,
+      budget: { limitUsd: null, window: 'month', spentUsd: 0 },
       lastRunAt: null,
     })
   })
@@ -114,6 +114,62 @@ describe('GET /api/v1/admin/users', () => {
     await remove(aliceId)
     const { users } = await list()
     expect(users.find((u) => u.id === aliceId)?.status).toBe('removed')
+  })
+})
+
+describe('PATCH /api/v1/admin/users/:id/budget', () => {
+  const setBudget = (id: string, body: unknown, cookie = admin) =>
+    request(`/api/v1/admin/users/${id}/budget`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { cookie },
+    })
+
+  test('sets limit and window; spend follows the window', async () => {
+    await db.insert(schema.scan).values({
+      userId: aliceId,
+      targets: [{ type: 'url', value: 'https://example.com/' }],
+      scanMode: 'quick',
+      status: 'completed',
+      costUsd: 4,
+      createdAt: new Date('2020-01-01T00:00:00Z'),
+    })
+    const monthly = await setBudget(aliceId, { budgetUsd: 50, window: 'month' })
+    expect(monthly.status).toBe(200)
+    expect(((await monthly.json()) as AdminUser).budget).toEqual({
+      limitUsd: 50,
+      window: 'month',
+      spentUsd: 0,
+    })
+    await setBudget(aliceId, { budgetUsd: 8.76, window: 'forever' })
+    const { users } = await list()
+    expect(users.find((u) => u.id === aliceId)!.budget).toEqual({
+      limitUsd: 8.76,
+      window: 'forever',
+      spentUsd: 4,
+    })
+    const unlimited = await setBudget(aliceId, { budgetUsd: null, window: 'week' })
+    expect(((await unlimited.json()) as AdminUser).budget.limitUsd).toBeNull()
+  })
+
+  test('admins may set their own budget', async () => {
+    const res = await setBudget(adminId, { budgetUsd: 0, window: 'year' })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as AdminUser).budget).toMatchObject({ limitUsd: 0, window: 'year' })
+  })
+
+  test('is admin-only and validates the body', async () => {
+    expect((await setBudget(aliceId, { budgetUsd: 1, window: 'month' }, alice)).status).toBe(403)
+    expect((await setBudget(aliceId, { budgetUsd: -1, window: 'month' })).status).toBe(422)
+    expect((await setBudget(aliceId, { budgetUsd: 1, window: 'day' })).status).toBe(422)
+    const fractional = await setBudget(aliceId, { budgetUsd: 1.005, window: 'month' })
+    expect(fractional.status).toBe(400)
+    expect(await errorCode(fractional)).toBe('INVALID_BUDGET')
+    const missing = await setBudget('0190a000-0000-7000-8000-000000000000', {
+      budgetUsd: 1,
+      window: 'month',
+    })
+    expect(missing.status).toBe(404)
   })
 })
 

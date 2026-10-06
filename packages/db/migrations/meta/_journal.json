@@ -33,15 +33,29 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1791226196472,
-      "tag": "0004_scan_targets_typed",
+      "when": 1791222389739,
+      "tag": "0004_rainy_randall",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "7",
-      "when": 1791226213030,
-      "tag": "0005_scan_targets_jsonb",
+      "when": 1791224007210,
+      "tag": "0005_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791259258277,
+      "tag": "0006_scan_targets_typed",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791259258666,
+      "tag": "0007_scan_targets_jsonb",
       "breakpoints": true
     }
   ]

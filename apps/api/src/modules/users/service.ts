@@ -1,5 +1,6 @@
 import { schema } from '@strix-panel/db'
-import { toRole, userStatus, type Role } from '@strix-panel/shared'
+import { windowStartSql } from '@strix-panel/db/budget'
+import { toRole, userStatus, type BudgetWindow, type Role } from '@strix-panel/shared'
 import { and, asc, count, eq, isNull, ne, sql, type SQL } from 'drizzle-orm'
 import { lockAdmins, type Tx } from '../../lib/admin-lock'
 import { db } from '../../lib/db'
@@ -10,19 +11,21 @@ type UserRow = typeof schema.user.$inferSelect
 
 const { user, scan, session } = schema
 
-// This month = since the start of the current UTC month, by scan creation time.
+// Budget spend = cost of the scans created in the user's current budget window (all of them for `forever`).
+const windowStart = windowStartSql(user.budgetWindow)
 const usage = db
   .select({
-    userId: scan.userId,
+    userId: sql<string>`${user.id}`.as('user_id'),
     runs: sql<number>`count(*)::int`.as('runs'),
     costUsd: sql<number>`coalesce(sum(${scan.costUsd}), 0)::float8`.as('cost_usd'),
-    costThisMonthUsd: sql<number>`coalesce(sum(${scan.costUsd}) filter (
-      where ${scan.createdAt} >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'
-    ), 0)::float8`.as('cost_this_month_usd'),
+    budgetSpentUsd: sql<number>`coalesce(sum(${scan.costUsd}) filter (
+      where ${windowStart} is null or ${scan.createdAt} >= ${windowStart}
+    ), 0)::float8`.as('budget_spent_usd'),
     lastRunAt: sql<Date>`max(${scan.createdAt})`.mapWith(scan.createdAt).as('last_run_at'),
   })
   .from(scan)
-  .groupBy(scan.userId)
+  .innerJoin(user, eq(user.id, scan.userId))
+  .groupBy(user.id)
   .as('usage')
 
 async function selectUsers(where?: SQL) {
@@ -31,7 +34,7 @@ async function selectUsers(where?: SQL) {
       user,
       runs: usage.runs,
       costUsd: usage.costUsd,
-      costThisMonthUsd: usage.costThisMonthUsd,
+      budgetSpentUsd: usage.budgetSpentUsd,
       lastRunAt: usage.lastRunAt,
     })
     .from(user)
@@ -47,7 +50,11 @@ async function selectUsers(where?: SQL) {
     status: userStatus(row.user),
     runs: row.runs ?? 0,
     costUsd: row.costUsd ?? 0,
-    costThisMonthUsd: row.costThisMonthUsd ?? 0,
+    budget: {
+      limitUsd: row.user.budgetUsd,
+      window: row.user.budgetWindow,
+      spentUsd: row.budgetSpentUsd ?? 0,
+    },
     lastRunAt: row.lastRunAt?.toISOString() ?? null,
     createdAt: row.user.createdAt.toISOString(),
   }))
@@ -179,3 +186,26 @@ export const setUserRole = (actor: Actor, id: string, role: Role) =>
       .set(role === 'admin' ? { role, approvedAt: target.approvedAt ?? new Date() } : { role })
       .where(eq(user.id, id))
   })
+
+export interface SetBudgetInput {
+  budgetUsd: number | null
+  window: BudgetWindow
+}
+
+// Unlike the other actions, admins may set their own budget, and it works for users in any status.
+export async function setUserBudget(id: string, input: SetBudgetInput): Promise<AdminUserDto> {
+  // Whole cents only. (TypeBox's multipleOf uses %, which floats get wrong: 8.76 % 0.01 !== 0.)
+  if (
+    input.budgetUsd !== null &&
+    Math.abs(input.budgetUsd * 100 - Math.round(input.budgetUsd * 100)) > 1e-6
+  ) {
+    throw new BadRequestError('INVALID_BUDGET', 'The budget must be in whole cents')
+  }
+  const updated = await db
+    .update(user)
+    .set({ budgetUsd: input.budgetUsd, budgetWindow: input.window })
+    .where(eq(user.id, id))
+    .returning({ id: user.id })
+  if (updated.length === 0) throw new NotFoundError('User not found', 'USER_NOT_FOUND')
+  return getUserDto(id)
+}

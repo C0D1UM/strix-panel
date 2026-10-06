@@ -48,7 +48,7 @@ export const scansModule = new Elysia({ name: 'scans', prefix: '/scans' })
         }
       },
       body: CreateScanBody,
-      response: { 201: ScanResponse, 400: ErrorResponse },
+      response: { 201: ScanResponse, 400: ErrorResponse, 403: ErrorResponse },
       detail: { tags, summary: 'Create a scan and start it (URLs and/or API spec files)' },
     },
   )
@@ -171,6 +171,6 @@ export const scansModule = new Elysia({ name: 'scans', prefix: '/scans' })
   .post('/:id/resume', ({ user, params }) => resumeScan(user, params.id), {
     requireAuth: true,
     params: ScanIdParams,
-    response: { 200: ScanResponse, 404: ErrorResponse, 409: ErrorResponse },
+    response: { 200: ScanResponse, 403: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
     detail: { tags, summary: 'Resume a failed or stopped scan' },
   })

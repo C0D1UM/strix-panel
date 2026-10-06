@@ -1,5 +1,11 @@
-import { describe, expect, test } from 'bun:test'
+import { schema } from '@strix-panel/db'
+import { beforeEach, describe, expect, test } from 'bun:test'
+import { db } from '../src/lib/db'
 import { request } from './helpers'
+
+beforeEach(async () => {
+  await db.delete(schema.setting)
+})
 
 describe('system', () => {
   test('GET /api/health reports database ok', async () => {
@@ -13,6 +19,7 @@ describe('system', () => {
     expect(await res.json()).toEqual({
       auth: { providers: ['email'], registrationEnabled: true },
       branding: { showPoweredBy: false },
+      budget: { minToStartUsd: 3 },
     })
   })
 

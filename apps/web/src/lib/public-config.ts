@@ -17,3 +17,9 @@ export function loadPublicConfig() {
   })
   return pending
 }
+
+// After an admin changes settings: fetch again, keeping the old value until the new one arrives.
+export function reloadPublicConfig() {
+  pending = null
+  return loadPublicConfig()
+}

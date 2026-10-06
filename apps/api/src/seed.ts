@@ -38,7 +38,7 @@ export async function seedAdmin(input: {
     return 'promoted'
   }
 
-  // Better Auth's internal adapter, not the sign-up endpoint, so it works with AUTH_REGISTRATION_ENABLED=false.
+  // Better Auth's internal adapter, not the sign-up endpoint, so it works with registration turned off (Admin → Settings).
   // It still hashes the password and runs our user hooks (ALLOWED_EMAIL_DOMAINS).
   const ctx = await auth.$context
   const user = await ctx.internalAdapter.createUser(

@@ -7,7 +7,9 @@
     "./schema": "./src/schema/index.ts",
     "./queue": "./src/queue.ts",
     "./testing": "./src/testing.ts",
-    "./notify": "./src/notify.ts"
+    "./notify": "./src/notify.ts",
+    "./budget": "./src/budget.ts",
+    "./settings": "./src/settings.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate",

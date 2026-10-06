@@ -1,11 +1,18 @@
 import { schema } from '@strix-panel/db'
 import { eq } from 'drizzle-orm'
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { db } from '../src/lib/db'
+import { updateSettings } from '../src/modules/settings/service'
+import { seedAdmin } from '../src/seed'
 import { request, signUp } from './helpers'
 
 beforeEach(async () => {
+  await db.delete(schema.setting)
   await db.delete(schema.user)
+})
+// Test files share one database: don't leak settings into the next file.
+afterEach(async () => {
+  await db.delete(schema.setting)
 })
 
 describe('auth', () => {
@@ -60,34 +67,36 @@ describe('auth', () => {
   })
 })
 
-// The env is read once per process, so the disabled case runs the app in a child process.
-describe('AUTH_REGISTRATION_ENABLED=false', () => {
+describe('registration disabled', () => {
   test('blocks sign-up, even for the first user, but not the seed', async () => {
-    const script = `
-      const { request, signUp } = await import('./test/helpers')
-      const { seedAdmin } = await import('./src/seed')
-      const { res } = await signUp('first@example.com')
-      const config = await (await request('/api/v1/config')).json()
-      const seed = await seedAdmin({ email: 'seed@example.com', password: 'password1234', name: 'Seed' })
-      const signIn = await request('/api/auth/sign-in/email', {
-        method: 'POST',
-        body: JSON.stringify({ email: 'seed@example.com', password: 'password1234' }),
-      })
-      console.log(JSON.stringify({ status: res.status, config, seed, signIn: signIn.status }))
-      process.exit(0)
-    `
-    const proc = Bun.spawn(['bun', '-e', script], {
-      cwd: `${import.meta.dir}/..`,
-      env: { ...process.env, AUTH_REGISTRATION_ENABLED: 'false' },
-      stderr: 'inherit',
+    await updateSettings({ auth: { registrationEnabled: false } }, null)
+    const { res } = await signUp('first@example.com')
+    expect(res.status).toBe(403)
+    expect(((await res.json()) as { code: string }).code).toBe('REGISTRATION_CLOSED')
+    const config = (await (await request('/api/v1/config')).json()) as {
+      auth: { registrationEnabled: boolean }
+    }
+    expect(config.auth.registrationEnabled).toBe(false)
+    const seed = await seedAdmin({
+      email: 'seed@example.com',
+      password: 'password1234',
+      name: 'Seed',
     })
-    const out = JSON.parse((await new Response(proc.stdout).text()).trim().split('\n').at(-1)!)
-    expect(out.status).toBe(400)
-    expect(out.config.auth.registrationEnabled).toBe(false)
-    expect(out.seed).toBe('created')
-    expect(out.signIn).toBe(200)
+    expect(seed).toBe('created')
+    const seedSignIn = await request('/api/auth/sign-in/email', {
+      method: 'POST',
+      body: JSON.stringify({ email: 'seed@example.com', password: 'password1234' }),
+    })
+    expect(seedSignIn.status).toBe(200)
     const users = await db.select({ email: schema.user.email }).from(schema.user)
     expect(users).toEqual([{ email: 'seed@example.com' }])
+  })
+
+  test('turning it back on allows sign-up again without a restart', async () => {
+    await updateSettings({ auth: { registrationEnabled: false } }, null)
+    expect((await signUp('first@example.com')).res.status).toBe(403)
+    await updateSettings({ auth: { registrationEnabled: true } }, null)
+    expect((await signUp('first@example.com')).res.status).toBe(200)
   })
 })
 
@@ -134,27 +143,58 @@ describe('approval and account state', () => {
   })
 })
 
-describe('AUTH_AUTO_APPROVE_USERS=false', () => {
+describe('default budget for new accounts', () => {
+  test('new accounts are unlimited by default', async () => {
+    await signUp('first@example.com')
+    const [user] = await db
+      .select({ budgetUsd: schema.user.budgetUsd, budgetWindow: schema.user.budgetWindow })
+      .from(schema.user)
+    expect(user).toEqual({ budgetUsd: null, budgetWindow: 'month' })
+  })
+
+  test('every new account gets the default limit, admins and the seed admin included', async () => {
+    await updateSettings(
+      { budget: { newUserLimitEnabled: true, newUserLimitUsd: 25, newUserWindow: 'week' } },
+      null,
+    )
+    await signUp('first@example.com')
+    await signUp('second@example.com')
+    await seedAdmin({ email: 'seed@example.com', password: 'password1234', name: 'Seed' })
+    const users = await db
+      .select({
+        email: schema.user.email,
+        role: schema.user.role,
+        budgetUsd: schema.user.budgetUsd,
+        budgetWindow: schema.user.budgetWindow,
+      })
+      .from(schema.user)
+      .orderBy(schema.user.email)
+    expect(users).toEqual([
+      { email: 'first@example.com', role: 'admin', budgetUsd: 25, budgetWindow: 'week' },
+      { email: 'second@example.com', role: 'user', budgetUsd: 25, budgetWindow: 'week' },
+      { email: 'seed@example.com', role: 'admin', budgetUsd: 25, budgetWindow: 'week' },
+    ])
+  })
+
+  test('turning the limit off keeps the amount but new accounts are unlimited', async () => {
+    await updateSettings({ budget: { newUserLimitEnabled: true, newUserLimitUsd: 25 } }, null)
+    await updateSettings({ budget: { newUserLimitEnabled: false } }, null)
+    await signUp('first@example.com')
+    const [user] = await db.select({ budgetUsd: schema.user.budgetUsd }).from(schema.user)
+    expect(user!.budgetUsd).toBeNull()
+  })
+})
+
+describe('auto-approve disabled', () => {
   test('first user (admin) is approved, later users are pending, seed admin is approved', async () => {
-    const script = `
-      const { request, signUp } = await import('./test/helpers')
-      const { seedAdmin } = await import('./src/seed')
-      const first = await signUp('first@example.com')
-      const second = await signUp('second@example.com')
-      await seedAdmin({ email: 'seed@example.com', password: 'password1234', name: 'Seed' })
-      const me1 = await (await request('/api/v1/me', { headers: { cookie: first.cookie } })).json()
-      const me2 = await (await request('/api/v1/me', { headers: { cookie: second.cookie } })).json()
-      console.log(JSON.stringify({ me1, me2 }))
-      process.exit(0)
-    `
-    const proc = Bun.spawn(['bun', '-e', script], {
-      cwd: `${import.meta.dir}/..`,
-      env: { ...process.env, AUTH_AUTO_APPROVE_USERS: 'false' },
-      stderr: 'inherit',
-    })
-    const out = JSON.parse((await new Response(proc.stdout).text()).trim().split('\n').at(-1)!)
-    expect(out.me1).toMatchObject({ role: 'admin', approved: true, pendingUsers: 1 })
-    expect(out.me2).toMatchObject({ role: 'user', approved: false })
+    await updateSettings({ auth: { autoApproveUsers: false } }, null)
+    const first = await signUp('first@example.com')
+    const second = await signUp('second@example.com')
+    await seedAdmin({ email: 'seed@example.com', password: 'password1234', name: 'Seed' })
+    const me1 = await (await request('/api/v1/me', { headers: { cookie: first.cookie } })).json()
+    const me2 = await (await request('/api/v1/me', { headers: { cookie: second.cookie } })).json()
+    expect(me1).toMatchObject({ role: 'admin', approved: true, pendingUsers: 1 })
+    expect(me2).toMatchObject({ role: 'user', approved: false })
     const [seed] = await db
       .select({ approvedAt: schema.user.approvedAt })
       .from(schema.user)

@@ -7,6 +7,7 @@ import { dashboardModule } from './modules/dashboard'
 import { healthModule } from './modules/health'
 import { meModule } from './modules/me'
 import { scansModule } from './modules/scans'
+import { settingsModule } from './modules/settings'
 import { usersModule } from './modules/users'
 import { errorsPlugin } from './plugins/errors'
 
@@ -24,6 +25,7 @@ export const app = new Elysia({ prefix: '/api' })
           { name: 'Users', description: 'Users and roles' },
           { name: 'Scans', description: 'Strix scans and their live progress' },
           { name: 'Dashboard', description: 'Usage metrics' },
+          { name: 'Settings', description: 'Panel settings' },
           { name: 'Auth', description: 'Better Auth endpoints' },
         ],
         components: authDocs.components as never,
@@ -47,7 +49,13 @@ export const app = new Elysia({ prefix: '/api' })
   )
   .use(healthModule)
   .group('/v1', (v1) =>
-    v1.use(configModule).use(meModule).use(scansModule).use(dashboardModule).use(usersModule),
+    v1
+      .use(configModule)
+      .use(meModule)
+      .use(scansModule)
+      .use(dashboardModule)
+      .use(usersModule)
+      .use(settingsModule),
   )
 
 export type App = typeof app

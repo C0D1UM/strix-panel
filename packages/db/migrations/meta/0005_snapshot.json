@@ -1,6 +1,6 @@
 {
-  "id": "06f5bd49-f5fd-410b-8e65-bc7818e64bcb",
-  "prevId": "0208e23f-67c5-4c4e-a039-9c1b717d73bd",
+  "id": "ec8fae9d-339f-4f3f-983b-b07c951c5b98",
+  "prevId": "f7afb831-7dca-4e92-9c4c-fc6671353fbb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -323,6 +323,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "budget_usd": {
+          "name": "budget_usd",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "budget_window": {
+          "name": "budget_window",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'month'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -447,7 +460,7 @@
         },
         "targets": {
           "name": "targets",
-          "type": "jsonb",
+          "type": "text[]",
           "primaryKey": false,
           "notNull": true
         },
@@ -868,6 +881,58 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.setting": {
+      "name": "setting",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "setting_updated_by_user_id_fk": {
+          "name": "setting_updated_by_user_id_fk",
+          "tableFrom": "setting",
+          "tableTo": "user",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

@@ -9,4 +9,8 @@ export const PublicConfigResponse = t.Object({
     // Show the "Powered by CODIUM" credit (SHOW_POWERED_BY_CODIUM).
     showPoweredBy: t.Boolean(),
   }),
+  budget: t.Object({
+    // What a user with a budget must have left to start a scan (Admin → Settings).
+    minToStartUsd: t.Number(),
+  }),
 })

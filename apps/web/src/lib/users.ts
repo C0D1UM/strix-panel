@@ -1,5 +1,6 @@
-import type { UserStatus } from '@strix-panel/shared'
+import { formatBudgetUsd, type BudgetWindow, type UserStatus } from '@strix-panel/shared'
 import { api } from './api'
+import { WINDOW_PHRASES } from './budget'
 
 export type AdminUser = NonNullable<
   Awaited<ReturnType<typeof api.v1.admin.users.get>>['data']
@@ -114,6 +115,27 @@ function call(id: string, action: UserAction) {
 
 export async function runUserAction(id: string, action: UserAction) {
   const { data, error } = await call(id, action)
+  if (error || !data) {
+    const message = (error?.value as { error?: { message?: string } } | undefined)?.error?.message
+    return { data: null, error: message ?? 'Something went wrong. Try again.' }
+  }
+  return { data: data as AdminUser, error: null }
+}
+
+// Budget column: "$37.60 / $50.00 · month", "Unlimited · $4.20 this month" or "No budget".
+export function formatUserBudget({ budget }: Pick<AdminUser, 'budget'>): string {
+  if (budget.limitUsd === null) {
+    return `Unlimited · ${formatBudgetUsd(budget.spentUsd)} ${WINDOW_PHRASES[budget.window]}`
+  }
+  if (budget.limitUsd === 0) return 'No budget'
+  return `${formatBudgetUsd(budget.spentUsd)} / ${formatBudgetUsd(budget.limitUsd)} · ${budget.window}`
+}
+
+export async function saveUserBudget(
+  id: string,
+  body: { budgetUsd: number | null; window: BudgetWindow },
+) {
+  const { data, error } = await api.v1.admin.users({ id }).budget.patch(body)
   if (error || !data) {
     const message = (error?.value as { error?: { message?: string } } | undefined)?.error?.message
     return { data: null, error: message ?? 'Something went wrong. Try again.' }

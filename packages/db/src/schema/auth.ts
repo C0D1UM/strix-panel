@@ -1,5 +1,6 @@
 // Tables required by Better Auth (core + admin plugin). Field names must match what Better Auth expects.
-import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import type { BudgetWindow } from '@strix-panel/shared'
+import { boolean, index, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { createdAt, id, updatedAt } from './columns'
 
 export const user = pgTable('user', {
@@ -12,10 +13,13 @@ export const user = pgTable('user', {
   banned: boolean('banned').notNull().default(false),
   banReason: text('ban_reason'),
   banExpires: timestamp('ban_expires', { withTimezone: true }),
-  // Null = waiting for admin approval (AUTH_AUTO_APPROVE_USERS=false). Set at sign-up otherwise.
+  // Null = waiting for admin approval (auto-approve off on Admin → Settings). Set at sign-up otherwise.
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   // Soft delete: sign-in refused, scans kept. Cleared by restore.
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  // Scan budget in USD per window: null = unlimited, 0 = no scans. Kept with the window so a limit can come back.
+  budgetUsd: numeric('budget_usd', { precision: 10, scale: 2, mode: 'number' }),
+  budgetWindow: text('budget_window').$type<BudgetWindow>().notNull().default('month'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })

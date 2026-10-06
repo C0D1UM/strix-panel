@@ -5,7 +5,7 @@ import { asc, eq } from 'drizzle-orm'
 import { exists, mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeEach, expect, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 import { createScanProcessor, strixEnv } from '../src/processor'
 import type { Sandboxes } from '../src/sandbox'
 import { createScanStore } from '../src/scan-store'
@@ -43,7 +43,11 @@ async function createScan(
   return scan!
 }
 
-async function processor(scenario: string, reuseWorkDir?: string) {
+async function processor(
+  scenario: string,
+  reuseWorkDir?: string,
+  minScanBudgetUsd = async () => 3,
+) {
   const workDir = reuseWorkDir ?? (await mkdtemp(join(tmpdir(), 'strix-worker-')))
   // realpath: macOS's temp dir is a symlink, and the shell in fake Strix reports the resolved path.
   const uploadDir = await realpath(await mkdtemp(join(tmpdir(), 'strix-uploads-')))
@@ -61,6 +65,7 @@ async function processor(scenario: string, reuseWorkDir?: string) {
     uploadDir,
     tmpDir,
     pollIntervalMs: 100,
+    minScanBudgetUsd,
     env: { ...strixEnv(), FAKE_STRIX_SCENARIO: scenario },
     sigtermAfterMs: 2000,
     sigkillAfterMs: 4000,
@@ -282,4 +287,102 @@ test('fails a resumed scan whose uploaded file is missing', async () => {
   expect(failed.status).toBe('failed')
   expect(failed.error).toBe('An uploaded target file is missing: gone.json')
   expect(await exists(join(workDir, scan.id, 'argv.txt'))).toBe(false)
+})
+
+describe('user budget', () => {
+  const setBudget = (budgetUsd: number | null) =>
+    db.update(schema.user).set({ budgetUsd }).where(eq(schema.user.id, userId))
+  const argvOf = async (workDir: string, scanId: string) =>
+    (await Bun.file(join(workDir, scanId, 'argv.txt')).text()).trim().split('\n')
+  const messages = async (id: string) => (await events(id)).map((e) => e.message)
+
+  test("the scan's cap is lowered to the remaining budget", async () => {
+    await setBudget(4)
+    const scan = await createScan()
+    const { workDir, process } = await processor('completed')
+    await process(scan.id)
+    expect((await argvOf(workDir, scan.id)).slice(-2)).toEqual(['--max-budget', '4'])
+    expect(await messages(scan.id)).toContain(
+      'Budget cap: $4.00 (limited by your remaining budget)',
+    )
+  })
+
+  test('a scan without a cap gets the remaining budget, plus what it already spent', async () => {
+    await setBudget(10)
+    const scan = await createScan()
+    // Created in an earlier window: its spend no longer counts, but the cap covers the whole run.
+    await db
+      .update(schema.scan)
+      .set({ maxBudgetUsd: null, costUsd: 1, createdAt: new Date('2020-01-01T00:00:00Z') })
+      .where(eq(schema.scan.id, scan.id))
+    const { workDir, process } = await processor('completed')
+    await process(scan.id)
+    expect((await argvOf(workDir, scan.id)).slice(-2)).toEqual(['--max-budget', '11'])
+  })
+
+  test('a smaller scan cap is kept without a budget feed line', async () => {
+    await setBudget(50)
+    const scan = await createScan()
+    const { workDir, process } = await processor('completed')
+    await process(scan.id)
+    expect((await argvOf(workDir, scan.id)).slice(-2)).toEqual(['--max-budget', '5'])
+    expect((await messages(scan.id)).some((m) => m.startsWith('Budget cap'))).toBe(false)
+  })
+
+  test('a resumed scan from an earlier window fails without starting Strix', async () => {
+    await setBudget(10)
+    const scan = await createScan()
+    await db
+      .update(schema.scan)
+      .set({
+        createdAt: new Date('2020-01-01T00:00:00Z'),
+        startedAt: new Date('2020-01-01T00:00:00Z'),
+      })
+      .where(eq(schema.scan.id, scan.id))
+    const { workDir, process } = await processor('completed')
+    await process(scan.id)
+    const done = (await load(scan.id))!
+    expect(done.status).toBe('failed')
+    expect(done.error).toBe(
+      'This scan was started in an earlier budget period, so it cannot be resumed. Start a new scan.',
+    )
+    expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)
+  })
+
+  test('nothing left fails the scan even with no minimum', async () => {
+    await setBudget(0)
+    const scan = await createScan()
+    const { workDir, process } = await processor('completed', undefined, async () => 0)
+    await process(scan.id)
+    expect((await load(scan.id))!.status).toBe('failed')
+    expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)
+  })
+
+  test('reads the minimum when the scan starts', async () => {
+    await setBudget(4)
+    const scan = await createScan()
+    let reads = 0
+    const { workDir, process } = await processor('completed', undefined, async () => {
+      reads++
+      return 5
+    })
+    await process(scan.id)
+    expect(reads).toBe(1)
+    expect((await load(scan.id))!.error).toBe(
+      'Not enough budget left to start the scan ($4.00 left, $5.00 needed)',
+    )
+    expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)
+  })
+
+  test('below the minimum the scan fails without starting Strix', async () => {
+    await setBudget(2)
+    const scan = await createScan()
+    const { workDir, removed, process } = await processor('completed')
+    await process(scan.id)
+    const done = (await load(scan.id))!
+    expect(done.status).toBe('failed')
+    expect(done.error).toBe('Not enough budget left to start the scan ($2.00 left, $3.00 needed)')
+    expect(removed).toEqual([scan.id])
+    expect(await Bun.file(join(workDir, scan.id, 'argv.txt')).exists()).toBe(false)
+  })
 })

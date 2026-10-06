@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/dashboard', name: 'dashboard', component: Empty },
     { path: '/scans', name: 'scans', component: Empty },
     { path: '/admin/users', name: 'admin-users', component: Empty },
+    { path: '/admin/settings', name: 'admin-settings', component: Empty },
   ],
 })
 
@@ -40,12 +41,14 @@ test('regular users see no Admin section', () => {
   expect(text).toContain('Scans')
   expect(text).not.toContain('Admin')
   expect(text).not.toContain('Users')
+  expect(text).not.toContain('Settings')
 })
 
 test('admins see the Admin section with a pending badge', () => {
   currentUser.value = user({ role: 'admin', pendingUsers: 2 })
   const wrapper = mountSidebar()
   expect(wrapper.text()).toContain('Admin')
+  expect(wrapper.text()).toContain('Settings')
   expect(wrapper.find('[data-testid="nav-badge"]').text()).toBe('2')
 })
 

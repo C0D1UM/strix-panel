@@ -11,11 +11,29 @@ type CurrentUserModule = typeof currentUserModule
 
 const get = vi.fn()
 const approve = vi.fn()
+const patchBudget = vi.fn()
 vi.mock('../src/lib/api', () => ({
   api: {
     v1: {
       admin: {
-        users: Object.assign(() => ({ approve: { post: () => approve() } }), { get: () => get() }),
+        users: Object.assign(
+          ({ id }: { id: string }) => ({
+            approve: { post: () => approve() },
+            budget: { patch: (body: unknown) => patchBudget(id, body) },
+          }),
+          { get: () => get() },
+        ),
+      },
+      config: {
+        get: () =>
+          Promise.resolve({
+            data: {
+              auth: { providers: ['email'], registrationEnabled: true },
+              branding: { showPoweredBy: false },
+              budget: { minToStartUsd: 3 },
+            },
+            error: null,
+          }),
       },
     },
   },
@@ -40,7 +58,7 @@ const row = (id: string, name: string, status: string, role = 'user') => ({
   status,
   runs: 1,
   costUsd: 0.5,
-  costThisMonthUsd: 0.25,
+  budget: { limitUsd: null as number | null, window: 'month', spentUsd: 0.25 },
   lastRunAt: id === 'a' ? '2026-09-24T15:30:00.000Z' : null,
   createdAt: '2026-01-01T00:00:00.000Z',
 })
@@ -95,16 +113,13 @@ test('tabs and search filter the list', async () => {
   expect(names(wrapper)).toEqual(['Ann'])
 })
 
-test('your own row has no actions menu', async () => {
+test('your own row only offers the budget', async () => {
   const wrapper = await mountPage()
-  const rows = wrapper.findAll('[data-testid="user-row"]')
-  const byName = (name: string) =>
-    rows.find((r) => r.find('[data-testid="user-name"]').text() === name)!
-  const mine = byName('Me')
-  expect(mine.text()).toContain('You')
-  expect(mine.find('[data-testid="user-menu"]').exists()).toBe(false)
-  const ann = byName('Ann')
-  expect(ann.find('[data-testid="user-menu"]').exists()).toBe(true)
+  const menus = wrapper.findAllComponents(UserActionsMenu)
+  const mine = menus.find((m) => m.props('user').id === 'me')!
+  expect(mine.props('self')).toBe(true)
+  const ann = menus.find((m) => m.props('user').id === 'a')!
+  expect(ann.props('self')).toBe(false)
 })
 
 test('shows an empty state for an empty tab', async () => {
@@ -118,10 +133,10 @@ const annRow = (wrapper: Awaited<ReturnType<typeof mountPage>>) =>
     .findAll('[data-testid="user-row"]')
     .find((r) => r.find('[data-testid="user-name"]').text() === 'Ann')!
 
-test('shows both costs and only the date of the last run', async () => {
+test('shows the budget, total cost and only the date of the last run', async () => {
   const wrapper = await mountPage()
   const ann = annRow(wrapper)
-  expect(ann.text()).toContain('$0.2500')
+  expect(ann.find('[data-testid="budget"]').text()).toBe('Unlimited · $0.25 this month')
   expect(ann.text()).toContain('$0.5000')
   const lastRun = ann.find('[data-testid="last-run"]')
   expect(lastRun.text()).toBe(
@@ -153,4 +168,32 @@ test('a failed action shows an error toast with the reason', async () => {
   expect(useToast().toasts.value).toMatchObject([
     { message: "Couldn't approve Pat: This user is already approved", tone: 'error' },
   ])
+})
+
+test('sets a budget from the menu and updates the row', async () => {
+  patchBudget.mockResolvedValue({
+    data: { ...row('a', 'Ann', 'active'), budget: { limitUsd: 2, window: 'week', spentUsd: 0.25 } },
+    error: null,
+  })
+  const wrapper = await mountPage()
+  const ann = wrapper.findAllComponents(UserActionsMenu).find((m) => m.props('user').id === 'a')!
+  ann.vm.$emit('budget')
+  await flushPromises()
+  const dialog = document.body
+  const amount = dialog.querySelector<HTMLInputElement>('[data-testid="budget-amount"]')!
+  amount.value = '2'
+  amount.dispatchEvent(new Event('input'))
+  const period = dialog.querySelector<HTMLSelectElement>('[data-testid="budget-window"]')!
+  period.value = 'week'
+  period.dispatchEvent(new Event('change'))
+  await flushPromises()
+  expect(dialog.querySelector('[data-testid="budget-below-minimum"]')?.textContent).toContain(
+    "Below the $3.00 minimum, so this user can't start scans.",
+  )
+  dialog.querySelector('form')!.dispatchEvent(new Event('submit'))
+  await flushPromises()
+  expect(patchBudget).toHaveBeenCalledWith('a', { budgetUsd: 2, window: 'week' })
+  expect(annRow(wrapper).find('[data-testid="budget"]').text()).toBe('$0.25 / $2.00 · week')
+  expect(useToast().toasts.value).toMatchObject([{ message: 'Budget of Ann saved.' }])
+  wrapper.unmount()
 })

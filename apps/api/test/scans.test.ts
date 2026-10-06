@@ -1,14 +1,16 @@
 import { schema } from '@strix-panel/db'
 import { notifyScanUpdate } from '@strix-panel/db/notify'
 import { createReportWorker } from '@strix-panel/db/queue'
+import type { BudgetWindow } from '@strix-panel/shared'
 import { reportPdfPath, scanTargetFilePath } from '@strix-panel/shared/env'
 import { eq } from 'drizzle-orm'
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { db } from '../src/lib/db'
 import { env } from '../src/lib/env'
 import { reportQueue, scanQueue } from '../src/lib/queue'
+import { updateSettings } from '../src/modules/settings/service'
 import { request, signUp } from './helpers'
 
 let admin: string
@@ -521,6 +523,163 @@ describe('POST /api/v1/scans/:id/resume', () => {
     expect(await errorCode(broke)).toBe('SCAN_BUDGET_EXHAUSTED')
 
     expect((await resume(scan.id, bob)).status).toBe(404)
+  })
+})
+
+describe('user budget', () => {
+  afterEach(async () => {
+    await db.delete(schema.setting)
+  })
+  const setBudget = (budgetUsd: number | null, budgetWindow: BudgetWindow = 'month') =>
+    db
+      .update(schema.user)
+      .set({ budgetUsd, budgetWindow })
+      .where(eq(schema.user.email, 'alice@example.com'))
+  const spend = async (costUsd: number) => {
+    const { scan } = await create(alice)
+    await db
+      .update(schema.scan)
+      .set({ status: 'completed', costUsd })
+      .where(eq(schema.scan.id, scan.id))
+    return scan
+  }
+
+  test('refuses to start below the minimum, and with a zero budget', async () => {
+    await setBudget(10)
+    await spend(8)
+    const low = await create(alice)
+    expect(low.res.status).toBe(403)
+    expect(low.scan.error).toEqual({
+      code: 'BUDGET_INSUFFICIENT',
+      message: 'You have $2.00 of budget left; at least $3.00 is needed to start a scan',
+    })
+
+    await setBudget(0)
+    const none = await create(alice)
+    expect(none.res.status).toBe(403)
+    expect((none.scan.error as { code: string }).code).toBe('BUDGET_INSUFFICIENT')
+  })
+
+  test('the cap cannot exceed what is left; equal or empty is fine', async () => {
+    await setBudget(10)
+    await spend(1.995)
+    const over = await create(alice, { maxBudgetUsd: 8.01 })
+    expect(over.res.status).toBe(400)
+    expect(over.scan.error).toEqual({
+      code: 'BUDGET_EXCEEDED',
+      message: 'At most $8.00 is left in your budget',
+    })
+    const exact = await create(alice, { maxBudgetUsd: 8 })
+    expect(exact.res.status).toBe(201)
+    const empty = await create(alice)
+    expect(empty.res.status).toBe(201)
+    expect(empty.scan.maxBudgetUsd).toBeNull()
+  })
+
+  test('spend outside the window does not count, and unlimited users are not limited', async () => {
+    await setBudget(5, 'week')
+    const old = await spend(100)
+    await db
+      .update(schema.scan)
+      .set({ createdAt: new Date('2020-01-01T00:00:00Z') })
+      .where(eq(schema.scan.id, old.id))
+    expect((await create(alice, { maxBudgetUsd: 5 })).res.status).toBe(201)
+
+    await setBudget(null)
+    expect((await create(alice, { maxBudgetUsd: 1000 })).res.status).toBe(201)
+  })
+
+  test('the minimum comes from Admin → Settings', async () => {
+    await setBudget(10)
+    await spend(8)
+    await updateSettings({ budget: { minToStartUsd: 1 } }, null)
+    expect((await create(alice)).res.status).toBe(201)
+    await updateSettings({ budget: { minToStartUsd: 5 } }, null)
+    const low = await create(alice)
+    expect(low.res.status).toBe(403)
+    expect((low.scan.error as { message: string }).message).toContain('at least $5.00')
+    const me = await request('/api/v1/me/budget', { headers: { cookie: alice } })
+    expect(((await me.json()) as { minToStartUsd: number }).minToStartUsd).toBe(5)
+    const config = await request('/api/v1/config')
+    expect(((await config.json()) as { budget: { minToStartUsd: number } }).budget).toEqual({
+      minToStartUsd: 5,
+    })
+  })
+
+  test('resume needs the minimum too', async () => {
+    const scan = await spend(9)
+    await db.update(schema.scan).set({ status: 'failed' }).where(eq(schema.scan.id, scan.id))
+    await setBudget(10)
+    const res = await request(`/api/v1/scans/${scan.id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice },
+    })
+    expect(res.status).toBe(403)
+    expect(await errorCode(res)).toBe('BUDGET_INSUFFICIENT')
+  })
+
+  test("resume checks the owner's budget, not the admin's", async () => {
+    const scan = await spend(9)
+    await db.update(schema.scan).set({ status: 'failed' }).where(eq(schema.scan.id, scan.id))
+    const resume = () =>
+      request(`/api/v1/scans/${scan.id}/resume`, { method: 'POST', headers: { cookie: admin } })
+    await db
+      .update(schema.user)
+      .set({ budgetUsd: 0 })
+      .where(eq(schema.user.email, 'admin@example.com'))
+    await setBudget(10)
+    const refused = await resume()
+    expect(refused.status).toBe(403)
+    expect(await errorCode(refused)).toBe('BUDGET_INSUFFICIENT')
+    await setBudget(null)
+    expect((await resume()).status).toBe(200)
+  })
+
+  test('a limited user cannot resume a scan from an earlier budget window', async () => {
+    const scan = await spend(1)
+    await db
+      .update(schema.scan)
+      .set({ status: 'failed', createdAt: new Date('2020-01-01T00:00:00Z') })
+      .where(eq(schema.scan.id, scan.id))
+    await setBudget(10)
+    const res = await request(`/api/v1/scans/${scan.id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice },
+    })
+    expect(res.status).toBe(403)
+    expect(await errorCode(res)).toBe('BUDGET_WINDOW_CLOSED')
+    await setBudget(10, 'forever')
+    const forever = await request(`/api/v1/scans/${scan.id}/resume`, {
+      method: 'POST',
+      headers: { cookie: alice },
+    })
+    expect(forever.status).toBe(200)
+  })
+
+  test('GET /api/v1/me/budget reports limit, spend and window', async () => {
+    const get = async () =>
+      (await (await request('/api/v1/me/budget', { headers: { cookie: alice } })).json()) as Record<
+        string,
+        unknown
+      >
+    expect(await get()).toMatchObject({
+      limitUsd: null,
+      window: 'month',
+      spentUsd: 0,
+      remainingUsd: null,
+      minToStartUsd: 3,
+    })
+    await spend(1.5)
+    await setBudget(10, 'forever')
+    expect(await get()).toEqual({
+      limitUsd: 10,
+      window: 'forever',
+      spentUsd: 1.5,
+      remainingUsd: 8.5,
+      minToStartUsd: 3,
+      windowStartsAt: null,
+      resetsAt: null,
+    })
   })
 })
 

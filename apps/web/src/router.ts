@@ -44,6 +44,12 @@ export const router = createRouter({
           component: () => import('./pages/AdminUsersPage.vue'),
           meta: { requiresAdmin: true },
         },
+        {
+          path: 'admin/settings',
+          name: 'admin-settings',
+          component: () => import('./pages/AdminSettingsPage.vue'),
+          meta: { requiresAdmin: true },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

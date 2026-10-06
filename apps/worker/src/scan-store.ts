@@ -1,6 +1,7 @@
 // Everything the processor reads from or writes to Postgres. Every write ends with a NOTIFY so the API can
 // push the change to open scan pages.
 import { schema, type Database } from '@strix-panel/db'
+import { getUserBudget } from '@strix-panel/db/budget'
 import { notifyScanUpdate } from '@strix-panel/db/notify'
 import type { ScanStatus } from '@strix-panel/shared'
 import { and, eq, sql } from 'drizzle-orm'
@@ -74,6 +75,10 @@ export function createScanStore(db: Database) {
     get,
     status,
     start,
+    budget: (userId: string) => getUserBudget(db, userId),
+    // A feed line on its own.
+    addEvent: (scanId: string, message: string) =>
+      write(scanId, {}, [{ type: 'status', message, data: null }]),
     // A poll tick: usage, agents, findings and the events derived from them.
     applyDiff: (scanId: string, diff: RunDiff) => write(scanId, diff.patch, diff.events, diff),
     // A status transition, always with a matching feed line.
