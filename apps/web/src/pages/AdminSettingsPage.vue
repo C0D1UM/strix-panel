@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BUDGET_WINDOWS, formatBudgetUsd } from '@strix-panel/shared'
+import { BUDGET_WINDOWS, formatBudgetUsd, SCAN_TARGETS_HARD_LIMIT } from '@strix-panel/shared'
 import { diffSettings, type Settings } from '@strix-panel/shared/settings'
 import { computed, onMounted, onUnmounted, ref, toRaw } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
@@ -16,6 +16,7 @@ import { session } from '../lib/session'
 const SECTIONS = [
   { id: 'sign-up', title: 'Sign-up' },
   { id: 'budgets', title: 'Budgets' },
+  { id: 'scans', title: 'Scans' },
 ] as const
 
 // Same bounds as the API (and a user's budget). Number inputs give '' when empty.
@@ -26,6 +27,14 @@ function amountError(value: unknown): string | null {
   if (value > MAX_USD) return `Enter at most ${formatBudgetUsd(MAX_USD)}`
   if (Math.abs(value * 100 - Math.round(value * 100)) > 1e-6) return 'Use whole cents'
   return null
+}
+
+function maxTargetsError(value: unknown): string | null {
+  return Number.isInteger(value) &&
+    (value as number) >= 1 &&
+    (value as number) <= SCAN_TARGETS_HARD_LIMIT
+    ? null
+    : `Enter a whole number from 1 to ${SCAN_TARGETS_HARD_LIMIT}`
 }
 
 const inputClass =
@@ -53,7 +62,12 @@ const limitError = computed(() =>
 const minError = computed(() =>
   draft.value ? amountError(draft.value.budget.minToStartUsd) : null,
 )
-const invalid = computed(() => limitError.value !== null || minError.value !== null)
+const targetsError = computed(() =>
+  draft.value ? maxTargetsError(draft.value.scans.maxTargets) : null,
+)
+const invalid = computed(
+  () => limitError.value !== null || minError.value !== null || targetsError.value !== null,
+)
 // A default limit users could never start a scan with (0 is a deliberate "no scans").
 const limitBelowMinimum = computed(() => {
   const budget = draft.value?.budget
@@ -94,7 +108,7 @@ async function save() {
   saved.value = data
   draft.value = structuredClone(data)
   toast('Settings saved.')
-  // The sign-in page reads registrationEnabled from the public config.
+  // The sign-in page reads registrationEnabled and the new scan form maxTargets from the public config.
   void reloadPublicConfig()
 }
 
@@ -299,6 +313,42 @@ onUnmounted(() => {
                   :aria-invalid="minError !== null"
                 />
               </span>
+            </div>
+          </div>
+        </section>
+
+        <section id="scans" aria-labelledby="scans-title" class="scroll-mt-10">
+          <h2 id="scans-title" class="text-lg font-semibold">Scans</h2>
+          <p class="mt-1 text-sm text-fg-muted">Limits for new scans.</p>
+          <div class="mt-4 divide-y divide-line rounded-lg border border-line bg-surface-raised">
+            <div class="flex flex-wrap items-start justify-between gap-6 p-5">
+              <div class="min-w-0 flex-1">
+                <label for="max-targets" class="text-sm font-medium">Max targets per scan</label>
+                <p class="mt-1 text-sm text-fg-muted">
+                  URLs and API spec files count together. Existing scans keep their targets, also
+                  when resumed.
+                </p>
+                <p
+                  v-if="targetsError"
+                  data-testid="max-targets-error"
+                  class="mt-2 text-sm text-danger"
+                >
+                  {{ targetsError }}
+                </p>
+              </div>
+              <input
+                id="max-targets"
+                v-model="draft.scans.maxTargets"
+                data-testid="max-targets"
+                type="number"
+                min="1"
+                :max="SCAN_TARGETS_HARD_LIMIT"
+                step="1"
+                inputmode="numeric"
+                :class="inputClass"
+                class="w-40"
+                :aria-invalid="targetsError !== null"
+              />
             </div>
           </div>
         </section>

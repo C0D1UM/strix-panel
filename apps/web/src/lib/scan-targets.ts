@@ -1,7 +1,6 @@
 import {
   checkScanTargetFileName,
   MAX_SCAN_TARGET_FILE_BYTES,
-  MAX_SCAN_TARGETS,
   normalizeScanTarget,
 } from '@strix-panel/shared'
 
@@ -15,8 +14,11 @@ export const newTargetRow = (): TargetRow => ({ id: ++lastRowId, kind: 'url', te
 const MAX_FILE_MB = MAX_SCAN_TARGET_FILE_BYTES / (1024 * 1024)
 
 // Mirrors the API's rules so the form can validate as you type. Targets keep the rows' order; the API also checks
-// file contents, which the form does not.
-export function validateTargetRows(rows: TargetRow[]): {
+// file contents, which the form does not. `maxTargets` is the scans.maxTargets setting.
+export function validateTargetRows(
+  rows: TargetRow[],
+  maxTargets: number,
+): {
   targets: (string | File)[]
   errors: string[]
 } {
@@ -48,7 +50,7 @@ export function validateTargetRows(rows: TargetRow[]): {
     targets.push(file)
   }
   if (targets.length === 0 && errors.length === 0) errors.push('Add at least one target')
-  if (targets.length > MAX_SCAN_TARGETS) errors.push(`At most ${MAX_SCAN_TARGETS} targets per scan`)
+  if (targets.length > maxTargets) errors.push(`At most ${maxTargets} targets per scan`)
   return { targets, errors }
 }
 

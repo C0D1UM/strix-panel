@@ -20,6 +20,7 @@ describe('system', () => {
       auth: { providers: ['email'], registrationEnabled: true },
       branding: { showPoweredBy: false },
       budget: { minToStartUsd: 3 },
+      scans: { maxTargets: 3 },
     })
   })
 

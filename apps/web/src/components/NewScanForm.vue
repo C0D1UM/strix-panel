@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { formatBudgetUsd, SCAN_MODES, type ScanMode } from '@strix-panel/shared'
+import { DEFAULT_SETTINGS } from '@strix-panel/shared/settings'
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../lib/api'
 import { budgetBlockReason, budgetLeftText, loadMyBudget, type MyBudget } from '../lib/budget'
+import { loadPublicConfig, publicConfig } from '../lib/public-config'
 import { newTargetRow, validateTargetRows, type TargetRow } from '../lib/scan-targets'
 import { SCAN_MODE_HINTS, type Scan } from '../lib/scans'
 import ScanTargetsInput from './ScanTargetsInput.vue'
@@ -22,15 +24,21 @@ const touched = ref(false)
 const myBudget = ref<MyBudget | null>(null)
 
 onMounted(async () => {
+  void loadPublicConfig()
   myBudget.value = await loadMyBudget()
 })
+
+// The default until the public config loads; the API enforces the real setting either way.
+const maxTargets = computed(
+  () => publicConfig.value?.scans.maxTargets ?? DEFAULT_SETTINGS.scans.maxTargets,
+)
 
 // Null when the user has no budget limit (or it hasn't loaded).
 const remaining = computed(() => myBudget.value?.remainingUsd ?? null)
 const budgetHint = computed(() => (myBudget.value ? budgetLeftText(myBudget.value) : null))
 const blockReason = computed(() => (myBudget.value ? budgetBlockReason(myBudget.value) : null))
 
-const parsed = computed(() => validateTargetRows(targetRows.value))
+const parsed = computed(() => validateTargetRows(targetRows.value, maxTargets.value))
 const budgetValue = computed(() =>
   String(budget.value).trim() === '' ? null : Number(budget.value),
 )
@@ -86,6 +94,7 @@ async function submit() {
       <legend class="text-sm font-medium">Targets</legend>
       <ScanTargetsInput
         v-model="targetRows"
+        :max="maxTargets"
         :invalid="touched && parsed.errors.length > 0"
         @blur="touched = true"
       />

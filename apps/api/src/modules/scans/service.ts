@@ -26,6 +26,7 @@ import { db } from '../../lib/db'
 import { env } from '../../lib/env'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors'
 import { reportQueue, scanQueue } from '../../lib/queue'
+import { getSettings } from '../settings/service'
 import { parseScanTargets, writeTargetFiles } from './target-files'
 
 type Viewer = Pick<AuthUser, 'id' | 'role'>
@@ -106,7 +107,8 @@ async function findScan(viewer: Viewer, id: string) {
 
 export async function createScan(viewer: Scanner, input: CreateScanInput): Promise<ScanDto> {
   assertApproved(viewer)
-  const { targets, files } = await parseScanTargets(input.targets)
+  const { scans } = await getSettings()
+  const { targets, files } = await parseScanTargets(input.targets, scans.maxTargets)
   const budget = await assertCanStartScan(viewer.id)
   const remaining = remainingBudget(budget.limitUsd, budget.spentUsd)
   // An empty cap is fine: the worker caps the scan at the remaining budget when it starts.

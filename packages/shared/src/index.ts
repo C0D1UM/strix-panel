@@ -78,7 +78,8 @@ export type ScanEventType = (typeof SCAN_EVENT_TYPES)[number]
 export const FINDING_SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'] as const
 export type FindingSeverity = (typeof FINDING_SEVERITIES)[number]
 
-export const MAX_SCAN_TARGETS = 3
+// The most targets a scan can have. The actual limit is the scans.maxTargets setting, which can go up to this.
+export const SCAN_TARGETS_HARD_LIMIT = 20
 export const MAX_SCAN_INSTRUCTION_LENGTH = 4000
 export const MAX_SCAN_NAME_LENGTH = 120
 

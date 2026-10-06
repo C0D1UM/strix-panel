@@ -42,7 +42,8 @@ describe('parseScanTargets', () => {
       file('a.json', '{}'),
       file('b.json', '{}'),
     ]
-    expect(await code(parseScanTargets(raw))).toBe('INVALID_TARGET')
+    expect(await code(parseScanTargets(raw, 3))).toBe('INVALID_TARGET')
+    expect(await code(parseScanTargets(raw, 4))).toBe('ok')
     expect(await code(parseScanTargets([]))).toBe('INVALID_TARGET')
   })
 

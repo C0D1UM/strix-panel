@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { MAX_SCAN_TARGETS, SCAN_TARGET_FILE_EXTENSIONS } from '@strix-panel/shared'
+import { SCAN_TARGET_FILE_EXTENSIONS } from '@strix-panel/shared'
 import { ref } from 'vue'
 import { formatFileSize, newTargetRow, type TargetRow } from '../lib/scan-targets'
 
 // The new scan form's target list: each row is a URL to type or an uploaded API spec file, in the order shown.
 const rows = defineModel<TargetRow[]>({ required: true })
-defineProps<{ invalid?: boolean }>()
+// `max`: the scans.maxTargets setting.
+const props = defineProps<{ max: number; invalid?: boolean }>()
 const emit = defineEmits<{ blur: [] }>()
 
 const accept = SCAN_TARGET_FILE_EXTENSIONS.join(',')
@@ -41,7 +42,7 @@ function remove(id: number) {
 }
 
 function add() {
-  if (rows.value.length < MAX_SCAN_TARGETS) rows.value = [...rows.value, newTargetRow()]
+  if (rows.value.length < props.max) rows.value = [...rows.value, newTargetRow()]
 }
 </script>
 
@@ -105,14 +106,14 @@ function add() {
       <button
         type="button"
         class="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline disabled:cursor-not-allowed disabled:text-fg-muted disabled:no-underline"
-        :disabled="rows.length >= MAX_SCAN_TARGETS"
+        :disabled="rows.length >= max"
         data-testid="target-add"
         @click="add"
       >
         <span class="icon-[lucide--plus] size-4" aria-hidden="true" />
         Add target
       </button>
-      <span class="text-xs text-fg-muted">{{ rows.length }} of {{ MAX_SCAN_TARGETS }}</span>
+      <span class="text-xs text-fg-muted">{{ rows.length }} of {{ max }}</span>
     </div>
     <p class="text-xs text-fg-muted">URLs or OpenAPI / Postman files (.json, .yaml)</p>
   </div>

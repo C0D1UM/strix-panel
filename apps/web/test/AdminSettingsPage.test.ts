@@ -22,6 +22,7 @@ const saved = {
     newUserLimitUsd: 10,
     newUserWindow: 'month',
   },
+  scans: { maxTargets: 3 },
 }
 const Empty = { template: '<div />' }
 const router = createRouter({
@@ -63,6 +64,8 @@ test('shows the sign-up section in the outline and the saved values', async () =
   const outline = wrapper.get('nav[aria-label="On this page"]').text()
   expect(outline).toContain('Sign-up')
   expect(outline).toContain('Budgets')
+  expect(outline).toContain('Scans')
+  expect((wrapper.get('[data-testid="max-targets"]').element as HTMLInputElement).value).toBe('3')
   expect(switches(wrapper).map((s) => s.attributes('aria-checked'))).toEqual([
     'true',
     'true',
@@ -130,6 +133,28 @@ test('an invalid amount blocks saving', async () => {
   expect(wrapper.text()).toContain('Use whole cents')
   await wrapper.get('[data-testid="save"]').trigger('click')
   expect(patch).not.toHaveBeenCalled()
+  wrapper.unmount()
+})
+
+test('saves the max targets per scan, and blocks values outside 1 to 20', async () => {
+  patch.mockResolvedValue({
+    data: { ...structuredClone(saved), scans: { maxTargets: 10 } },
+    error: null,
+  })
+  const wrapper = await mountPage()
+  const input = wrapper.get('[data-testid="max-targets"]')
+  for (const bad of ['0', '21', '2.5', '']) {
+    await input.setValue(bad)
+    expect(wrapper.find('[data-testid="max-targets-error"]').text()).toBe(
+      'Enter a whole number from 1 to 20',
+    )
+    expect(wrapper.get('[data-testid="save"]').attributes('disabled')).toBeDefined()
+  }
+  await input.setValue('10')
+  expect(wrapper.find('[data-testid="max-targets-error"]').exists()).toBe(false)
+  await wrapper.get('[data-testid="save"]').trigger('click')
+  await flushPromises()
+  expect(patch).toHaveBeenCalledWith({ scans: { maxTargets: 10 } })
   wrapper.unmount()
 })
 

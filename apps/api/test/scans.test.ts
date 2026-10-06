@@ -79,15 +79,37 @@ describe('POST /api/v1/scans', () => {
     }
   })
 
-  test('rejects more than three targets, an empty list and a non-positive budget', async () => {
-    const tooMany = await create(alice, {
-      targets: ['https://a.example', 'https://b.example', 'https://c.example', 'https://d.example'],
+  test('rejects more targets than the setting allows, an empty list and a non-positive budget', async () => {
+    const four = [
+      'https://a.example',
+      'https://b.example',
+      'https://c.example',
+      'https://d.example',
+    ]
+    const tooMany = await create(alice, { targets: four })
+    expect(tooMany.res.status).toBe(400)
+    expect(tooMany.scan.error).toEqual({
+      code: 'INVALID_TARGET',
+      message: 'At most 3 targets per scan',
     })
-    expect(tooMany.res.status).toBe(422)
     const none = await create(alice, { targets: [] })
     expect(none.res.status).toBe(422)
     const budget = await create(alice, { maxBudgetUsd: 0 })
     expect(budget.res.status).toBe(422)
+  })
+
+  test('the target limit follows Admin → Settings, up to 20', async () => {
+    try {
+      const urls = (n: number) => Array.from({ length: n }, (_, i) => `https://t${i}.example`)
+      await updateSettings({ scans: { maxTargets: 1 } }, null)
+      expect((await create(alice, { targets: urls(2) })).res.status).toBe(400)
+      await updateSettings({ scans: { maxTargets: 5 } }, null)
+      expect((await create(alice, { targets: urls(5) })).res.status).toBe(201)
+      await updateSettings({ scans: { maxTargets: 20 } }, null)
+      expect((await create(alice, { targets: urls(21) })).res.status).toBe(422)
+    } finally {
+      await db.delete(schema.setting)
+    }
   })
 
   test('requires a session', async () => {
@@ -148,8 +170,13 @@ describe('POST /api/v1/scans with spec files', () => {
 
   test('rejects four targets across URLs and files', async () => {
     const files = ['a', 'b'].map((n) => new File(['{}'], `${n}.json`))
-    const { res } = await createForm(alice, ['https://a.example', 'https://b.example', ...files])
-    expect(res.status).toBe(422)
+    const { res, scan } = await createForm(alice, [
+      'https://a.example',
+      'https://b.example',
+      ...files,
+    ])
+    expect(res.status).toBe(400)
+    expect((scan.error as { code: string }).code).toBe('INVALID_TARGET')
     expect(await scanCount()).toBe(0)
   })
 

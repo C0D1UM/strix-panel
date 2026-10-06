@@ -4,8 +4,8 @@
 import {
   checkScanTargetFileName,
   MAX_SCAN_TARGET_FILE_BYTES,
-  MAX_SCAN_TARGETS,
   normalizeScanTarget,
+  SCAN_TARGETS_HARD_LIMIT,
   type ScanTarget,
 } from '@strix-panel/shared'
 import { mkdir } from 'node:fs/promises'
@@ -45,8 +45,10 @@ export function checkSpecContent(name: string, bytes: Uint8Array): void {
   }
 }
 
+// `maxTargets` is the scans.maxTargets setting.
 export async function parseScanTargets(
   raw: (string | File)[],
+  maxTargets = SCAN_TARGETS_HARD_LIMIT,
 ): Promise<{ targets: ScanTarget[]; files: TargetFile[] }> {
   const targets: ScanTarget[] = []
   const files: TargetFile[] = []
@@ -75,8 +77,8 @@ export async function parseScanTargets(
     files.push({ name: item.name, bytes })
   }
   if (targets.length === 0) throw new BadRequestError('INVALID_TARGET', 'Add at least one target')
-  if (targets.length > MAX_SCAN_TARGETS) {
-    throw new BadRequestError('INVALID_TARGET', `At most ${MAX_SCAN_TARGETS} targets per scan`)
+  if (targets.length > maxTargets) {
+    throw new BadRequestError('INVALID_TARGET', `At most ${maxTargets} targets per scan`)
   }
   return { targets, files }
 }

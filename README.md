@@ -5,7 +5,7 @@ A self-hosted web panel for [Strix](https://strix.ai) ([GitHub](https://github.c
 ## Features
 
 - **Sign-in**: Google OAuth and/or email + password, optionally limited to your email domains. The first user to sign in becomes the admin.
-- **Scans**: start a Strix run against 1–3 `http(s)` URLs, with an optional name, extra instructions for the agent and a USD budget cap. Scans are queued and run by a worker, one at a time by default.
+- **Scans**: start a Strix run against up to 3 targets (`http(s)` URLs or uploaded OpenAPI/Postman files; admins can raise the limit to 20), with an optional name, extra instructions for the agent and a USD budget cap. Scans are queued and run by a worker, one at a time by default.
 - **Live progress**: status, agents, an activity feed, and token and cost usage update in the browser as the scan runs. Stop a queued or running scan at any time.
 - **Findings**: vulnerabilities sorted by severity, each with its write-up. Download the full Markdown report.
 - **Dashboard**: runs, tokens, cost and findings by severity over a chosen date range, with a trend chart.

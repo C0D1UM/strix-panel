@@ -119,7 +119,7 @@ Tests need Postgres. They always use separate databases (`strix_panel_test_<pack
 
 - Only `worker` gets the Docker socket and the Strix toolchain. Never mount `/var/run/docker.sock` into `api` or `web`.
 - Never log or return secrets: LLM keys, `BETTER_AUTH_SECRET`, OAuth secrets, session tokens.
-- Scan targets and instructions are user input that ends up on a command line. Pass them as an argv array (`Bun.spawn([...])`), never through a shell string. Targets are limited to 1–3, each an `http(s)` URL or an uploaded API spec file (`.json`/`.yaml`/`.yml`, ≤ 5 MB, content sniffed as a JSON/YAML object). Never accept a local path from the user (it would be mounted into the sandbox): file targets are stored by name only (`checkScanTargetFileName` in `packages/shared`) and the worker builds their path under `UPLOAD_DIR`.
+- Scan targets and instructions are user input that ends up on a command line. Pass them as an argv array (`Bun.spawn([...])`), never through a shell string. Targets are limited to 1 to `scans.maxTargets` (Admin → Settings, default 3, at most `SCAN_TARGETS_HARD_LIMIT` = 20, which also sizes the API's request body limit; checked at create only, so a resume keeps the scan's targets), each an `http(s)` URL or an uploaded API spec file (`.json`/`.yaml`/`.yml`, ≤ 5 MB, content sniffed as a JSON/YAML object). Never accept a local path from the user (it would be mounted into the sandbox): file targets are stored by name only (`checkScanTargetFileName` in `packages/shared`) and the worker builds their path under `UPLOAD_DIR`.
 - Strix runs with the worker's environment minus `DATABASE_URL`, so the agent cannot see DB credentials.
 - Don't hand-edit the generated files: `packages/db/migrations/*`, `bun.lock`.
 

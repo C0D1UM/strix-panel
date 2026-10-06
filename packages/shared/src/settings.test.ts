@@ -33,6 +33,17 @@ describe('mergeSettings', () => {
     ).toBe('week')
   })
 
+  test('ignores a max target count that is not a whole number from 1 to the hard limit', () => {
+    const maxTargets = (value: unknown) =>
+      mergeSettings([{ key: 'scans.maxTargets', value }]).scans.maxTargets
+    expect(maxTargets(10)).toBe(10)
+    expect(maxTargets(1)).toBe(1)
+    expect(maxTargets(20)).toBe(20)
+    expect(maxTargets(0)).toBe(3)
+    expect(maxTargets(21)).toBe(3)
+    expect(maxTargets(2.5)).toBe(3)
+  })
+
   test('does not mutate the defaults', () => {
     mergeSettings([{ key: 'auth.registrationEnabled', value: false }])
     expect(DEFAULT_SETTINGS.auth.registrationEnabled).toBe(true)

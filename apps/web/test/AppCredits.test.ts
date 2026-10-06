@@ -12,6 +12,7 @@ const config = (showPoweredBy: boolean): PublicConfig => ({
   auth: { providers: ['email'], registrationEnabled: true },
   branding: { showPoweredBy },
   budget: { minToStartUsd: 3 },
+  scans: { maxTargets: 3 },
 })
 
 afterEach(() => {

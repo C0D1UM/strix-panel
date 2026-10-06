@@ -2,10 +2,10 @@ import {
   FINDING_SEVERITIES,
   MAX_SCAN_INSTRUCTION_LENGTH,
   MAX_SCAN_NAME_LENGTH,
-  MAX_SCAN_TARGETS,
   SCAN_EVENT_TYPES,
   SCAN_MODES,
   SCAN_STATUSES,
+  SCAN_TARGETS_HARD_LIMIT,
   SCAN_TABS,
 } from '@strix-panel/shared'
 import { t } from 'elysia'
@@ -67,7 +67,8 @@ export const CreateScanBody = t.Object({
   name: t.Optional(t.String({ maxLength: MAX_SCAN_NAME_LENGTH })),
   targets: t.Array(t.Union([t.String({ minLength: 1, maxLength: 2048 }), t.File()]), {
     minItems: 1,
-    maxItems: MAX_SCAN_TARGETS,
+    // The real limit is the scans.maxTargets setting, checked by the service.
+    maxItems: SCAN_TARGETS_HARD_LIMIT,
     description:
       'In order: http(s) URLs and API spec files (.json, .yaml, .yml; OpenAPI, Swagger or Postman). Send multipart/form-data, repeating the targets field, when a file is included.',
   }),

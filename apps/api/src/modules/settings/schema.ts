@@ -1,3 +1,4 @@
+import { SCAN_TARGETS_HARD_LIMIT } from '@strix-panel/shared'
 import { t } from 'elysia'
 
 const BudgetWindow = t.Union([
@@ -20,6 +21,9 @@ export const SettingsResponse = t.Object({
     newUserLimitUsd: t.Number(),
     newUserWindow: BudgetWindow,
   }),
+  scans: t.Object({
+    maxTargets: t.Integer(),
+  }),
 })
 
 // Every field is optional: send only what changed.
@@ -41,6 +45,14 @@ export const SettingsPatchBody = t.Object(
           newUserLimitEnabled: t.Optional(t.Boolean()),
           newUserLimitUsd: t.Optional(Usd),
           newUserWindow: t.Optional(BudgetWindow),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    scans: t.Optional(
+      t.Object(
+        {
+          maxTargets: t.Optional(t.Integer({ minimum: 1, maximum: SCAN_TARGETS_HARD_LIMIT })),
         },
         { additionalProperties: false },
       ),

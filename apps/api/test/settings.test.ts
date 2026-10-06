@@ -30,6 +30,7 @@ describe('settings service', () => {
         newUserLimitUsd: 10,
         newUserWindow: 'month',
       },
+      scans: { maxTargets: 3 },
     })
   })
 
@@ -73,6 +74,7 @@ describe('/api/v1/admin/settings', () => {
     const patched = await patch(admin.cookie, {
       auth: { registrationEnabled: false },
       budget: { minToStartUsd: 1.5, newUserLimitEnabled: true, newUserWindow: 'year' },
+      scans: { maxTargets: 10 },
     })
     const expected = {
       auth: { registrationEnabled: false, autoApproveUsers: true },
@@ -82,6 +84,7 @@ describe('/api/v1/admin/settings', () => {
         newUserLimitUsd: 10,
         newUserWindow: 'year',
       },
+      scans: { maxTargets: 10 },
     }
     expect(patched.status).toBe(200)
     expect(await patched.json()).toEqual(expected)
@@ -108,6 +111,14 @@ describe('/api/v1/admin/settings', () => {
     expect(await db.select().from(schema.setting)).toHaveLength(0)
   })
 
+  test('rejects a max target count that is not a whole number from 1 to 20', async () => {
+    const admin = await signUp('first@example.com')
+    for (const maxTargets of [0, 21, 2.5]) {
+      expect((await patch(admin.cookie, { scans: { maxTargets } })).status).toBe(422)
+    }
+    expect(await db.select().from(schema.setting)).toHaveLength(0)
+  })
+
   test('never stores unknown keys', async () => {
     const admin = await signUp('first@example.com')
     const res = await patch(admin.cookie, { auth: { nope: true }, other: { x: 1 } })
@@ -121,5 +132,13 @@ describe('/api/v1/admin/settings', () => {
       auth: { registrationEnabled: boolean }
     }
     expect(config.auth.registrationEnabled).toBe(false)
+  })
+
+  test('public config follows the stored max target count', async () => {
+    await updateSettings({ scans: { maxTargets: 7 } }, null)
+    const config = (await (await request('/api/v1/config')).json()) as {
+      scans: { maxTargets: number }
+    }
+    expect(config.scans).toEqual({ maxTargets: 7 })
   })
 })

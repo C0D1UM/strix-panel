@@ -3,9 +3,10 @@ import { expect, test } from 'vitest'
 import ScanTargetsInput from '../src/components/ScanTargetsInput.vue'
 import { newTargetRow, type TargetRow } from '../src/lib/scan-targets'
 
-function setup(rows: TargetRow[] = [newTargetRow()]) {
+function setup(rows: TargetRow[] = [newTargetRow()], max = 3) {
   const wrapper = mount(ScanTargetsInput, {
     props: {
+      max,
       modelValue: rows,
       'onUpdate:modelValue': (value: TargetRow[]) => wrapper.setProps({ modelValue: value }),
     },
@@ -29,6 +30,14 @@ test('adds rows up to three and removes them, keeping one empty row', async () =
   expect(wrapper.find('[data-testid="target-add"]').attributes('disabled')).toBeDefined()
   for (let i = 0; i < 3; i++) await wrapper.find('[data-testid="target-remove"]').trigger('click')
   expect(model(wrapper)).toEqual([expect.objectContaining({ kind: 'url', text: '' })])
+})
+
+test('the add button stops at the given maximum', async () => {
+  const wrapper = setup([newTargetRow()], 2)
+  await wrapper.find('[data-testid="target-add"]').trigger('click')
+  await wrapper.find('[data-testid="target-add"]').trigger('click')
+  expect(model(wrapper)).toHaveLength(2)
+  expect(wrapper.text()).toContain('2 of 2')
 })
 
 test('picking a file turns that row into a file row, in place', async () => {

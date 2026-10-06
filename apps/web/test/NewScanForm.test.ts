@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, expect, test, vi } from 'vitest'
 import NewScanForm from '../src/components/NewScanForm.vue'
+import { loadPublicConfig, publicConfig } from '../src/lib/public-config'
 
 const post = vi.fn()
 const budgetGet = vi.fn()
@@ -12,6 +13,10 @@ vi.mock('../src/lib/api', () => ({
     },
   },
 }))
+vi.mock('../src/lib/public-config', async () => {
+  const { ref } = await import('vue')
+  return { publicConfig: ref(null), loadPublicConfig: vi.fn(async () => null) }
+})
 
 const unlimited = {
   limitUsd: null,
@@ -33,6 +38,8 @@ beforeEach(() => {
   post.mockReset()
   budgetGet.mockReset()
   budgetGet.mockResolvedValue({ data: unlimited, error: null })
+  publicConfig.value = null
+  vi.mocked(loadPublicConfig).mockClear()
 })
 
 test('shows target errors and does not submit an invalid form', async () => {
@@ -140,4 +147,14 @@ test('an unlimited budget changes nothing', async () => {
   expect(wrapper.find('[data-testid="budget-left"]').exists()).toBe(false)
   expect(wrapper.find('[data-testid="budget-blocked"]').exists()).toBe(false)
   expect(wrapper.find('input[type="number"]').attributes('placeholder')).toBe('No limit')
+})
+
+test('allows as many targets as the public config says, defaulting to 3', async () => {
+  const wrapper = mount(NewScanForm)
+  await flushPromises()
+  expect(loadPublicConfig).toHaveBeenCalled()
+  expect(wrapper.text()).toContain('1 of 3')
+  publicConfig.value = { scans: { maxTargets: 5 } } as unknown as typeof publicConfig.value
+  await flushPromises()
+  expect(wrapper.text()).toContain('1 of 5')
 })
