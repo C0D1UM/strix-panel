@@ -27,7 +27,7 @@
     "@strix-panel/api": "workspace:*",
     "@strix-panel/shared": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
-    "@types/bun": "1.4.2",
+    "@types/bun": "1.4.4",
     "@vitejs/plugin-vue": "6.0.9",
     "@vue/test-utils": "2.5.1",
     "happy-dom": "20.14.5",
